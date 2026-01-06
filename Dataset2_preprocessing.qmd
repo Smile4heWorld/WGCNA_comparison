@@ -1,0 +1,339 @@
+---
+title: "Dataset2_preprocessing"
+format: html
+editor: visual
+---
+
+```{r}
+# Setup
+library(GEOquery)
+library(limma)
+library(WGCNA)
+library(nlme)
+library(dplyr)
+
+options(stringsAsFactors = FALSE)
+disableWGCNAThreads()
+set.seed(1)
+
+ctrl_lme <- nlme::lmeControl(
+  singular.ok = TRUE,
+  returnObject = TRUE,
+  opt = "optim",
+  msMaxIter = 200,
+  maxIter = 200,
+  niterEM = 50
+)
+
+# Download metadata + raw files
+gse   <- getGEO("GSE62043", GSEMatrix = TRUE)
+eset  <- gse[[1]]
+pheno <- pData(eset)
+rownames(pheno) <- pheno$geo_accession
+
+baseDir <- "GSE62043_raw"
+dir.create(baseDir, showWarnings = FALSE)
+
+getGEOSuppFiles("GSE62043", baseDir = baseDir)
+
+gseDir  <- file.path(baseDir, "GSE62043")
+tarFile <- file.path(gseDir, "GSE62043_RAW.tar")
+stopifnot(file.exists(tarFile))
+
+rawDir <- file.path(gseDir, "raw_txt")
+dir.create(rawDir, showWarnings = FALSE)
+untar(tarFile, exdir = rawDir)
+
+raw_files <- list.files(rawDir, pattern = "\\.txt\\.gz$", full.names = TRUE)
+stopifnot(length(raw_files) > 0)
+
+gsm_from_file <- sub("^(GSM\\d+).*", "\\1", basename(raw_files))
+stopifnot(all(gsm_from_file %in% rownames(pheno)))
+
+pheno_raw <- pheno[gsm_from_file, , drop = FALSE]
+
+cat("Raw files:", length(raw_files), "\n")
+head(raw_files)
+
+if (any(grepl("\\.gz$", raw_files))) {
+  if (!requireNamespace("R.utils", quietly = TRUE)) {
+    stop("Please install R.utils: install.packages('R.utils')")
+  }
+  message("Decompressing gz files ...")
+  lapply(raw_files, function(f) R.utils::gunzip(f, remove = FALSE, overwrite = TRUE))
+  raw_files <- list.files(rawDir, pattern = "\\.txt$", full.names = TRUE)
+  stopifnot(length(raw_files) > 0)
+
+  gsm_from_file <- sub("^(GSM\\d+).*", "\\1", basename(raw_files))
+  stopifnot(all(gsm_from_file %in% rownames(pheno)))
+  pheno_raw <- pheno[gsm_from_file, , drop = FALSE]
+
+  cat("Raw files (txt):", length(raw_files), "\n")
+  head(raw_files)
+}
+```
+
+```{r}
+# Read Agilent 2-color raw + limma preprocessing
+RG <- tryCatch(
+  read.maimages(
+    files   = raw_files,
+    source  = "agilent",
+    columns = list(
+      R  = "rMedianSignal",
+      G  = "gMedianSignal",
+      Rb = "rBGMedianSignal",
+      Gb = "gBGMedianSignal"
+    )
+  ),
+  error = function(e) {
+    message("Falling back to read.maimages(..., source='agilent') defaults:\n", e$message)
+    read.maimages(files = raw_files, source = "agilent")
+  }
+)
+
+colnames(RG$R) <- gsm_from_file
+colnames(RG$G) <- gsm_from_file
+
+stopifnot(!is.null(RG$genes), nrow(RG$genes) == nrow(RG$R))
+stopifnot("ProbeName" %in% colnames(RG$genes))
+probe_id <- as.character(RG$genes$ProbeName)
+stopifnot(length(probe_id) == nrow(RG$R))
+rownames(RG$R) <- rownames(RG$G) <- probe_id
+
+RGb <- backgroundCorrect(RG, method = "normexp", offset = 50)
+MA  <- normalizeWithinArrays(RGb, method = "loess")
+MA  <- normalizeBetweenArrays(MA, method = "Aquantile")
+
+logR <- MA$A + MA$M/2
+logG <- MA$A - MA$M/2
+
+rownames(logR) <- rownames(RG$R)
+rownames(logG) <- rownames(RG$G)
+
+dim(logR)
+
+keep_feat <- !is.na(probe_id) &
+  grepl("^A_", probe_id) &
+  (is.null(RG$genes$ControlType) | RG$genes$ControlType == 0)
+
+logR <- logR[keep_feat, , drop = FALSE]
+logG <- logG[keep_feat, , drop = FALSE]
+
+rownames(logR) <- probe_id[keep_feat]
+rownames(logG) <- probe_id[keep_feat]
+
+head(rownames(logR))
+```
+
+```{r}
+# Build GSM_T / GSM_N mapping
+stopifnot(all(tolower(pheno_raw$label_ch1) == "cy5"),
+          all(tolower(pheno_raw$label_ch2) == "cy3"))
+
+normal_in_ch2 <- sum(grepl("normal|adjacent", pheno_raw$`tissue:ch2`, ignore.case = TRUE), na.rm = TRUE)
+normal_in_ch1 <- sum(grepl("normal|adjacent", pheno_raw$`tissue:ch1`, ignore.case = TRUE), na.rm = TRUE)
+if (normal_in_ch2 > normal_in_ch1) message("Metadata also suggests ch2 is normal more often.")
+
+expr_raw <- cbind(logR, logG)
+colnames(expr_raw) <- c(paste0(gsm_from_file, "_T"),
+                        paste0(gsm_from_file, "_N"))
+
+do_final_quantile <- FALSE
+expr_norm <- if (do_final_quantile) {
+  normalizeBetweenArrays(expr_raw, method = "quantile")
+} else {
+  expr_raw
+}
+dim(expr_norm)
+```
+
+```{r}
+# Annotation + filtering + collapse probes -> gene symbols
+gpl_tbl <- Table(getGEO("GPL6480"))
+
+annot <- gpl_tbl[, c("ID", "GENE_SYMBOL"), drop = FALSE]
+colnames(annot) <- c("probe_id", "symbol")
+
+probe_ids <- rownames(expr_norm)
+annot2 <- annot[match(probe_ids, annot$probe_id), , drop = FALSE]
+
+annot2$symbol <- trimws(sub("\\s*///.*$", "", as.character(annot2$symbol)))
+keep_probes <- !is.na(annot2$symbol) & annot2$symbol != ""
+
+expr_gene <- limma::avereps(expr_norm[keep_probes, , drop = FALSE],
+                            ID = annot2$symbol[keep_probes])
+
+cat("Probes (raw):", nrow(expr_norm), "\n")
+cat("Probes kept :", sum(keep_probes), "\n")
+cat("Genes final :", nrow(expr_gene), "\n")
+```
+
+```{r}
+# Build traits (paired design + Age + Gender)
+sid  <- colnames(expr_gene)
+GSM  <- sub("_(T|N)$", "", sid)
+isT  <- grepl("_T$", sid)
+
+idx <- match(GSM, rownames(pheno_raw))
+
+Age <- suppressWarnings(as.numeric(pheno_raw$`age:ch1`[idx]))
+
+stopifnot(all(pheno_raw$`gender:ch1` == pheno_raw$`gender:ch2`))
+
+g_raw  <- pheno_raw$`gender:ch1`[idx]
+Gender <- ifelse(grepl("^f", g_raw, ignore.case = TRUE), "F",
+          ifelse(grepl("^m", g_raw, ignore.case = TRUE), "M", NA_character_))
+
+sample_info <- data.frame(
+  sample_id  = sid,
+  GSM        = GSM,
+  patient_id = GSM,
+  condition  = ifelse(isT, "tumor", "normal"),
+  tumour     = as.integer(isT),
+  Age        = Age,
+  Gender     = Gender,
+  row.names  = sid,
+  stringsAsFactors = FALSE
+)
+
+expr_gene <- expr_gene[, rownames(sample_info)]
+stopifnot(identical(colnames(expr_gene), rownames(sample_info)))
+```
+
+```{r}
+# QC: PCA, Z.k outliers, dendrogram & paired removal
+expr_t <- t(expr_gene)
+stopifnot(identical(rownames(expr_t), rownames(sample_info)))
+
+pca  <- prcomp(expr_t, scale. = TRUE)
+labs <- rownames(expr_t)
+grp  <- factor(sample_info$condition, levels = c("normal","tumor"))
+pal  <- c(normal = "#1B9E77", tumor = "#D95F02")
+cols <- pal[grp]
+
+pv <- summary(pca)$importance["Proportion of Variance", 1:2]
+
+plot(pca$x[,1], pca$x[,2],
+     type = "n",
+     xlab = sprintf("PC1 (%.1f%%)", 100*pv[1]),
+     ylab = sprintf("PC2 (%.1f%%)", 100*pv[2]),
+     main = "PCA (tumor vs normal)")
+points(pca$x[,1], pca$x[,2], pch = 19, cex = 0.6, col = cols)
+text(pca$x[,1], pca$x[,2], labels = labs, pos = 3, cex = 0.55, col = cols, offset = 0.1)
+legend("topright", legend = names(pal), col = unname(pal), pch = 19, title = "Condition")
+
+C.samp <- cor(t(expr_t), use = "pairwise.complete.obs")
+A.samp <- abs(C.samp); diag(A.samp) <- 0
+k.samp <- rowSums(A.samp, na.rm = TRUE)
+Z.k    <- as.numeric(scale(k.samp))
+names(Z.k) <- rownames(expr_t)
+
+thr <- -2.5
+outliers <- names(Z.k)[Z.k < thr]
+
+cols_z <- ifelse(labs %in% outliers, "red", "black")
+plot(pca$x[,1], pca$x[,2],
+     type = "n",
+     xlab = sprintf("PC1 (%.1f%%)", 100*pv[1]),
+     ylab = sprintf("PC2 (%.1f%%)", 100*pv[2]),
+     main = sprintf("PCA (Z.k < %.1f in red)", thr))
+points(pca$x[,1], pca$x[,2], pch = 19, cex = 0.6, col = cols_z)
+text(pca$x[,1], pca$x[,2], labels = labs, pos = 3, cex = 0.6, col = cols_z, offset = 0.1)
+
+gsm_outliers <- unique(sub("_(T|N)$", "", outliers))
+if (length(gsm_outliers)) {
+  cat("Z.k outlier GSMs:\n", paste(gsm_outliers, collapse = ", "), "\n")
+}
+
+Zk_table <- data.frame(sample = names(Z.k), Z.k = Z.k, GSM = sub("_(T|N)$","", names(Z.k)))
+Zk_table <- Zk_table[order(Zk_table$Z.k), ]
+print(head(Zk_table, 10))
+
+d  <- as.dist(1 - C.samp)
+hc <- hclust(d, method = "average")
+
+plot(hc, labels = FALSE, main = "Sample clustering (1 - Pearson r)", sub = "", xlab = "")
+
+if (length(gsm_outliers)) {
+  targets_expanded <- unique(c(paste0(gsm_outliers, "_T"),
+                               paste0(gsm_outliers, "_N")))
+
+  leaf_labels_ordered <- rownames(C.samp)[hc$order]
+  found <- intersect(targets_expanded, leaf_labels_ordered)
+  x_out <- match(found, leaf_labels_ordered)
+
+  if (length(x_out)) {
+    old_xpd <- par(xpd = NA)
+    on.exit(par(xpd = old_xpd), add = TRUE)
+
+    yb <- par("usr")[3]
+    points(x_out, rep(yb, length(x_out)), pch = 19, col = "red")
+    text(x_out, rep(yb, length(x_out)),
+         labels = found, srt = 90, adj = c(1, 0.5),
+         col = "red", cex = 0.6)
+  } else {
+    message("None of the outlier GSMs matched the plotted leaves.")
+  }
+}
+
+if (length(outliers)) {
+  flagged_patients <- unique(sample_info$patient_id[match(outliers, rownames(sample_info))])
+  to_drop <- rownames(sample_info)[sample_info$patient_id %in% flagged_patients]
+
+  cat("Removing", length(flagged_patients), "patient(s),",
+      length(to_drop), "sample(s):\n", paste(to_drop, collapse = ", "), "\n")
+
+  expr_gene   <- expr_gene[, !(colnames(expr_gene) %in% to_drop), drop = FALSE]
+  sample_info <- sample_info[!(rownames(sample_info) %in% to_drop), , drop = FALSE]
+  stopifnot(identical(colnames(expr_gene), rownames(sample_info)))
+} else {
+  cat("No samples removed (no Z.k outliers below", thr, ").\n")
+}
+```
+
+```{r}
+# Save cleaned dataset to .RData
+stopifnot(exists("expr_gene"), exists("sample_info"))
+datExpr0 <- t(expr_gene)
+stopifnot(identical(rownames(datExpr0), rownames(sample_info)))
+
+if (!exists("Z.k"))          Z.k <- setNames(numeric(0), character(0))
+if (!exists("thr"))          thr <- -2.5
+if (!exists("outliers"))     outliers <- character(0)
+if (!exists("gsm_outliers")) gsm_outliers <- character(0)
+
+meta_kept <- pheno_raw[unique(sample_info$GSM), , drop = FALSE]
+sample_traits <- sample_info[, c("patient_id","tumour","Age","Gender"), drop = FALSE]
+
+info <- list(
+  created       = Sys.time(),
+  description   = "GSE62043 gene-level expression after Agilent 2-color preprocessing and paired outlier removal via sample connectivity (Z.k).",
+  R_version     = R.version.string,
+  n_genes       = nrow(expr_gene),
+  n_samples     = ncol(expr_gene),
+  zk_threshold  = thr,
+  removed_full  = outliers,
+  removed_GSM   = gsm_outliers
+)
+
+outfile <- sprintf("GSE62043_clean_noOutliers_%s.RData", format(Sys.Date(), "%Y%m%d"))
+
+save(
+  expr_gene,
+  sample_info,
+  sample_traits,
+  datExpr0,
+  Z.k, thr,
+  outliers,
+  gsm_outliers,
+  meta_kept,
+  info,
+  file = outfile,
+  compress = "xz"
+)
+
+cat("Saved cleaned dataset to:", outfile, "\n")
+cat("Dims expr_gene (genes x samples):", nrow(expr_gene), "x", ncol(expr_gene), "\n")
+cat("Samples removed (GSM):", ifelse(length(gsm_outliers), paste(gsm_outliers, collapse = ", "), "none"), "\n")
+```

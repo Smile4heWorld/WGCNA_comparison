@@ -1,0 +1,466 @@
+---
+title: "Dataset2_paired"
+format: html
+editor: visual
+---
+```{r}
+# Load + traits
+library(WGCNA)
+library(nlme)
+library(dplyr)
+
+options(stringsAsFactors = FALSE)
+disableWGCNAThreads()
+set.seed(1)
+
+infile <- "GSE62043_clean_noOutliers_20251223.RData"
+load(infile)
+
+stopifnot(exists("expr_gene"), exists("sample_info"))
+if (!exists("datExpr0")) datExpr0 <- t(expr_gene)
+stopifnot(identical(rownames(datExpr0), rownames(sample_info)))
+
+if (!exists("sample_traits")) {
+  sample_traits <- sample_info[, intersect(c("patient_id","tumour","Age","Gender"), colnames(sample_info)), drop = FALSE]
+}
+sample_traits$patient_id <- factor(sample_traits$patient_id)
+sample_traits$tumour     <- as.integer(sample_traits$tumour)
+if ("Age" %in% names(sample_traits)) sample_traits$Age <- suppressWarnings(as.numeric(sample_traits$Age))
+if ("Gender" %in% names(sample_traits)) {
+  g <- toupper(trimws(as.character(sample_traits$Gender)))
+  g[!g %in% c("F","M")] <- NA_character_
+  sample_traits$Gender <- factor(g, levels = c("F","M"))
+}
+rownames(sample_traits) <- rownames(sample_info)
+stopifnot(identical(rownames(datExpr0), rownames(sample_traits)))
+```
+
+```{r}
+# Soft-threshold (unsigned)
+gsg <- goodSamplesGenes(datExpr0, verbose = 3)
+stopifnot(isTRUE(gsg$allOK))
+
+nGenesForSFT <- min(5000, ncol(datExpr0))
+vars <- apply(datExpr0, 2, var)
+topGenesSFT <- names(sort(vars, decreasing = TRUE))[1:nGenesForSFT]
+datExpr_sft <- datExpr0[, topGenesSFT, drop = FALSE]
+
+powers <- 1:20
+sft <- pickSoftThreshold(datExpr_sft, powerVector = powers, networkType = "unsigned", verbose = 5)
+
+par(mfrow = c(1,2))
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     xlab = "Soft Threshold (power)", ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n", main = "Scale independence")
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     labels = powers, cex = 0.8, col = "red")
+abline(h = 0.90, col = "red")
+
+plot(sft$fitIndices[,1], sft$fitIndices[,5],
+     xlab = "Soft Threshold (power)", ylab = "Mean Connectivity",
+     type = "n", main = "Mean connectivity")
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels = powers, cex = 0.8, col = "red")
+
+fit <- -sign(sft$fitIndices[,3]) * sft$fitIndices[,2]
+softPower <- if (any(fit >= 0.90, na.rm = TRUE)) powers[which(fit >= 0.90)[1]] else 7
+softPower
+```
+
+```{r}
+# Network construction (blockwise)
+maxBlockSize <- 12000
+net <- blockwiseModules(
+  datExpr0,
+  power             = softPower,
+  networkType       = "unsigned",
+  TOMType           = "unsigned",
+  corType           = "pearson",
+  maxBlockSize      = maxBlockSize,
+  minModuleSize     = 70,
+  reassignThreshold = 0,
+  mergeCutHeight    = 0.25,
+  deepSplit         = 2,
+  pamRespectsDendro = FALSE,
+  numericLabels     = FALSE,
+  saveTOMs          = TRUE,
+  saveTOMFileBase   = sprintf("GSE62043_TOM_unsigned_power%i", softPower),
+  verbose           = 3
+)
+
+moduleColors <- net$colors
+names(moduleColors) <- colnames(datExpr0)
+MEs <- orderMEs(net$MEs)
+MEs <- MEs[, !grepl("^MEgrey$", names(MEs)), drop = FALSE]
+table(moduleColors)
+```
+
+```{r}
+# LMMs for module eigengenes
+ctrl_lme <- nlme::lmeControl(
+  singular.ok = TRUE, returnObject = TRUE,
+  opt = "optim", msMaxIter = 200, maxIter = 200, niterEM = 50
+)
+
+stopifnot(identical(rownames(MEs), rownames(sample_traits)))
+datLMM <- cbind(sample_traits, as.data.frame(MEs))
+
+covars <- c("Age","Gender")
+covars <- covars[!sapply(datLMM[covars], function(v) all(is.na(v)))]
+rhs <- paste(c("tumour", covars), collapse = " + ")
+
+modNames <- colnames(MEs)
+lmm_results <- lapply(modNames, function(mn) {
+  cols_needed <- c("patient_id","tumour", covars, mn)
+  d <- datLMM[, cols_needed, drop = FALSE]
+  d <- d[complete.cases(d), , drop = FALSE]
+
+  tabTN <- with(d, table(patient_id, tumour))
+  keep_pat <- rownames(tabTN)[rowSums(tabTN > 0) == 2]
+  d <- d[d$patient_id %in% keep_pat, , drop = FALSE]
+
+  if (nrow(d) < 4) return(data.frame(module = mn, beta_tumour = NA_real_, t_tumour = NA_real_, p_tumour = NA_real_))
+
+  form <- as.formula(paste(mn, "~", rhs))
+  fit0 <- tryCatch(
+    nlme::lme(form, random = ~ 1 | patient_id, data = d, method = "REML", control = ctrl_lme),
+    error = function(e) NULL
+  )
+  if (is.null(fit0)) return(data.frame(module = mn, beta_tumour = NA_real_, t_tumour = NA_real_, p_tumour = NA_real_))
+
+  sm <- summary(fit0)
+  rn <- rownames(sm$tTable)
+  coef_name <- if ("tumour" %in% rn) "tumour" else grep("^tumour", rn, value = TRUE)[1]
+
+  data.frame(
+    module      = mn,
+    beta_tumour = sm$tTable[coef_name, "Value"],
+    t_tumour    = sm$tTable[coef_name, "t-value"],
+    p_tumour    = sm$tTable[coef_name, "p-value"],
+    row.names   = NULL
+  )
+})
+
+lmm_results_df <- do.call(rbind, lmm_results)
+lmm_results_df$FDR_tumour <- p.adjust(lmm_results_df$p_tumour, method = "BH")
+lmm_results_df <- lmm_results_df[order(lmm_results_df$p_tumour), ]
+lmm_results_df
+
+if (requireNamespace("pheatmap", quietly = TRUE)) {
+  lmm_results_df$module_clean <- substring(lmm_results_df$module, 3)
+  tmat <- matrix(lmm_results_df$t_tumour, nrow = nrow(lmm_results_df),
+                 dimnames = list(lmm_results_df$module_clean, "Tumour (t)"))
+  pheatmap::pheatmap(
+    tmat, main = "Module–tumour associations (LMM t-values)",
+    cluster_rows = FALSE, cluster_cols = FALSE,
+    display_numbers = round(tmat, 2)
+  )
+}
+```
+
+```{r}
+# MM + GS (gene-level LMM |t| for tumour)
+datExpr <- datExpr0
+
+modNames_clean <- substring(colnames(MEs), 3)
+geneModuleMembership <- as.data.frame(WGCNA::cor(datExpr, MEs, use = "p"))
+colnames(geneModuleMembership) <- paste0("MM", modNames_clean)
+geneModuleMembership$gene <- colnames(datExpr)
+
+traits_full <- sample_traits[rownames(datExpr), , drop = FALSE]
+need_vars <- intersect(c("patient_id","tumour", covars), names(traits_full))
+keep1 <- complete.cases(traits_full[, need_vars, drop = FALSE])
+
+datExpr_ok <- datExpr[keep1, , drop = FALSE]
+traits_ok  <- traits_full[keep1, , drop = FALSE]
+
+tab <- with(traits_ok, table(patient_id, tumour))
+keep_patients2 <- rownames(tab)[rowSums(tab > 0, na.rm = TRUE) == 2]
+keep_rows2 <- traits_ok$patient_id %in% keep_patients2
+
+datExpr_ok <- datExpr_ok[keep_rows2, , drop = FALSE]
+traits_ok  <- traits_ok [keep_rows2, , drop = FALSE]
+stopifnot(identical(rownames(datExpr_ok), rownames(traits_ok)))
+
+nGS <- min(8000, ncol(datExpr_ok))
+vars_ok <- apply(datExpr_ok, 2, var, na.rm = TRUE)
+genes_for_GS <- names(sort(vars_ok, decreasing = TRUE))[1:nGS]
+
+X <- datExpr_ok[, genes_for_GS, drop = FALSE]
+safe_names   <- make.names(colnames(X), unique = TRUE)
+gene_to_safe <- setNames(safe_names, colnames(X))
+colnames(X)  <- safe_names
+
+datGS <- data.frame(traits_ok, X, check.names = FALSE)
+gs_rhs <- paste(c("tumour", covars), collapse = " + ")
+
+gs_list <- lapply(genes_for_GS, function(g) {
+  g_safe <- gene_to_safe[[g]]
+  form <- as.formula(paste0(g_safe, " ~ ", gs_rhs))
+  fit0 <- tryCatch(
+    nlme::lme(form, random = ~ 1 | patient_id, data = datGS, na.action = na.omit,
+              method = "REML", control = ctrl_lme),
+    error = function(e) NULL
+  )
+  if (is.null(fit0)) return(data.frame(gene = g, GS = NA_real_))
+
+  sm <- summary(fit0)
+  rn <- rownames(sm$tTable)
+  coef_name <- if ("tumour" %in% rn) "tumour" else grep("^tumour", rn, value = TRUE)[1]
+  data.frame(gene = g, GS = abs(sm$tTable[coef_name, "t-value"]))
+})
+geneGS <- do.call(rbind, gs_list)
+
+hubData <- geneModuleMembership %>%
+  left_join(geneGS, by = "gene") %>%
+  mutate(module = moduleColors[match(gene, names(moduleColors))])
+```
+
+```{r}
+# kWithin (chunked, within-module)
+datExpr <- as.matrix(datExpr0)
+storage.mode(datExpr) <- "double"
+stopifnot(identical(colnames(datExpr), names(moduleColors)))
+
+compute_kWithin_chunked <- function(datExpr, moduleColors, softPower, chunk_size = 500, exclude_modules = "grey", cor_use = "p") {
+  genes <- colnames(datExpr)
+  moduleColors <- moduleColors[genes]
+  mods <- setdiff(unique(moduleColors), exclude_modules)
+  kWithin <- setNames(rep(NA_real_, length(genes)), genes)
+
+  for (mod in mods) {
+    genes_in_mod <- genes[moduleColors == mod]
+    if (length(genes_in_mod) < 5) next
+
+    X_all <- datExpr[, genes_in_mod, drop = FALSE]
+    v <- apply(X_all, 2, var, na.rm = TRUE)
+    keep <- is.finite(v) & v > 0
+    if (!all(keep)) X_all <- X_all[, keep, drop = FALSE]
+    if (ncol(X_all) < 5) next
+
+    m <- ncol(X_all)
+    idx_in_mod <- seq_len(m); names(idx_in_mod) <- colnames(X_all)
+    kW <- setNames(rep(NA_real_, m), colnames(X_all))
+
+    for (s in seq(1, m, by = chunk_size)) {
+      e <- min(m, s + chunk_size - 1)
+      X_chunk <- X_all[, s:e, drop = FALSE]
+      chunk_genes <- colnames(X_chunk)
+
+      C <- WGCNA::cor(X_chunk, X_all, use = cor_use)
+      A <- abs(C)^softPower
+      diag_idx <- cbind(seq_len(nrow(A)), idx_in_mod[chunk_genes])
+      A[diag_idx] <- 0
+
+      kW[chunk_genes] <- rowSums(A, na.rm = TRUE)
+    }
+
+    kWithin[names(kW)] <- kW
+    cat(sprintf("Done kWithin for module %s (%d genes)\n", mod, length(kW)))
+  }
+
+  kWithin
+}
+
+kWithin_vec <- compute_kWithin_chunked(datExpr, moduleColors, softPower, chunk_size = 500)
+hubData$kWithin <- unname(kWithin_vec[hubData$gene])
+
+hubList <- hubData %>%
+  dplyr::filter(!is.na(kWithin)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = 10) %>%
+  dplyr::ungroup()
+
+hubList
+```
+
+
+```{r}
+# Top-5 table (green/turquoise/salmon; complete cases)
+target_modules <- c("green","turquoise","salmon")
+pool_n <- 80
+
+compute_GS_for_genes <- function(genes, datExpr_ok, traits_ok, covars, ctrl_lme) {
+  genes <- intersect(genes, colnames(datExpr_ok))
+  if (!length(genes)) return(data.frame(gene = character(), GS = numeric()))
+
+  X <- datExpr_ok[, genes, drop = FALSE]
+  safe <- make.names(colnames(X), unique = TRUE)
+  map  <- setNames(safe, colnames(X))
+  colnames(X) <- safe
+
+  datGS_small <- data.frame(traits_ok, X, check.names = FALSE)
+  rhs <- paste(c("tumour", covars), collapse = " + ")
+
+  out <- lapply(genes, function(g) {
+    g_safe <- map[[g]]
+    form <- as.formula(paste0(g_safe, " ~ ", rhs))
+    fit0 <- tryCatch(
+      nlme::lme(form, random = ~ 1 | patient_id, data = datGS_small, na.action = na.omit,
+                method = "REML", control = ctrl_lme),
+      error = function(e) NULL
+    )
+    if (is.null(fit0)) return(data.frame(gene = g, GS = NA_real_))
+    sm <- summary(fit0)
+    rn <- rownames(sm$tTable)
+    coef_name <- if ("tumour" %in% rn) "tumour" else grep("^tumour", rn, value = TRUE)[1]
+    if (is.na(coef_name)) return(data.frame(gene = g, GS = NA_real_))
+    data.frame(gene = g, GS = abs(sm$tTable[coef_name, "t-value"]))
+  })
+
+  dplyr::bind_rows(out)
+}
+
+pool <- hubData %>%
+  dplyr::filter(module %in% target_modules, !is.na(kWithin)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = pool_n) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(gene, module, kWithin, GS)
+
+mm_df <- geneModuleMembership
+rownames(mm_df) <- mm_df$gene
+
+pool$MM <- mapply(function(g, mod) {
+  col <- paste0("MM", mod)
+  if (!col %in% colnames(mm_df)) return(NA_real_)
+  i <- match(g, mm_df$gene)
+  if (is.na(i)) return(NA_real_)
+  as.numeric(mm_df[i, col, drop = TRUE])
+}, pool$gene, pool$module)
+
+missing_gs <- unique(pool$gene[is.na(pool$GS)])
+if (length(missing_gs)) {
+  gs_new <- compute_GS_for_genes(missing_gs, datExpr_ok, traits_ok, covars, ctrl_lme)
+  pool <- dplyr::left_join(pool, gs_new, by = "gene", suffix = c("", ".new"))
+  pool$GS <- ifelse(is.na(pool$GS), pool$GS.new, pool$GS)
+  pool$GS.new <- NULL
+}
+
+top15 <- pool %>%
+  dplyr::filter(is.finite(kWithin), is.finite(MM), is.finite(GS)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup() %>%
+  dplyr::arrange(dplyr::desc(kWithin)) %>%
+  dplyr::select(gene, module, kWithin, MM, GS)
+
+if (nrow(top15) < 15) warning("Got only ", nrow(top15), " rows without NA. Try increasing pool_n (e.g., 150).")
+
+if (requireNamespace("knitr", quietly = TRUE)) {
+  knitr::kable(
+    top15, digits = 3,
+    col.names = c("Gene","Module","kWithin","Module membership (MM)","Gene significance (GS)"),
+    caption = "Top 5 genes (by kWithin) in green, turquoise, salmon modules (no NA; ordered by kWithin)."
+  )
+} else {
+  print(top15)
+}
+
+raw_top5 <- hubData %>%
+  dplyr::filter(module %in% target_modules, !is.na(kWithin)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(gene, module, kWithin)
+
+final_top5 <- top15 %>%
+  dplyr::group_by(module) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(gene, module, kWithin)
+
+dplyr::anti_join(raw_top5, final_top5, by = c("gene","module"))
+```
+
+```{r}
+# GS vs MM plot (largest non-grey module)
+tabm <- sort(table(moduleColors), decreasing = TRUE)
+targetModule <- names(tabm)[names(tabm) != "grey"][1]
+mm_col <- paste0("MM", targetModule)
+
+if (!mm_col %in% names(hubData)) stop("Missing column ", mm_col)
+
+df <- hubData[hubData$module == targetModule, c("GS", mm_col), drop = FALSE]
+df <- df[complete.cases(df), , drop = FALSE]
+if (nrow(df) >= 2) {
+  names(df) <- c("GS","MM")
+  plot(df$MM, df$GS,
+       xlab = paste0("Module membership (", targetModule, ")"),
+       ylab = "Gene significance (|t| for tumour)",
+       main = paste("GS vs MM in", targetModule, "module"))
+  abline(lm(GS ~ MM, data = df), lty = 2)
+}
+```
+
+```{r}
+# Exports + reusable object
+stamp <- format(Sys.Date(), "%Y%m%d")
+write.csv(lmm_results_df, file = sprintf("WGCNA_ME_LMM_AgeGender_%s.csv", stamp), row.names = FALSE)
+write.csv(hubList,       file = sprintf("WGCNA_top10_hubs_%s.csv", stamp), row.names = FALSE)
+
+moduleGenes <- split(hubData$gene, hubData$module)
+for (mod in names(moduleGenes)) {
+  write.table(moduleGenes[[mod]], file = paste0("module_", mod, "_genes.txt"),
+              row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+
+save(net, moduleColors, MEs, softPower,
+     lmm_results_df, geneModuleMembership, geneGS, hubData, hubList,
+     file = sprintf("WGCNA_outputs_AgeGender_%s.RData", stamp), compress = "xz")
+
+moduleColors_paired <- moduleColors
+names(moduleColors_paired) <- colnames(datExpr0)
+
+MEs_paired <- MEs
+stopifnot(identical(rownames(MEs_paired), rownames(sample_traits)))
+
+hubData_paired <- hubData
+if ("gene" %in% names(hubData_paired)) rownames(hubData_paired) <- hubData_paired$gene
+
+lmm_results_paired <- lmm_results_df
+
+TOM_paired <- NULL
+TOM_files  <- NULL
+if (exists("net") && is.list(net)) {
+  if (!is.null(net$TOMFiles)) TOM_files <- net$TOMFiles
+  if (!is.null(net$TOMFile))  TOM_files <- net$TOMFile
+}
+
+paired_wgcna_export <- list(
+  method      = "paired_WGCNA_blockwise_unsigned_AgeGender",
+  dataset     = "GSE62043",
+  date        = Sys.Date(),
+  softPower   = softPower,
+  networkType = "unsigned",
+  corType     = "pearson",
+  TOMType     = "unsigned",
+  params      = list(
+    minModuleSize  = 70,
+    mergeCutHeight = 0.25,
+    deepSplit      = 2,
+    maxBlockSize   = if (exists("maxBlockSize")) maxBlockSize else NA_integer_
+  ),
+  covariates  = covars,
+  samples     = rownames(datExpr0),
+  genes       = colnames(datExpr0),
+  moduleColors = moduleColors_paired,
+  TOM          = TOM_paired,
+  TOM_files    = TOM_files,
+  MEs          = MEs_paired,
+  lmm_results  = lmm_results_paired,
+  hubData      = hubData_paired,
+  hubList      = hubList,
+  geneModuleMembership = geneModuleMembership,
+  geneGS               = geneGS,
+  sample_traits        = sample_traits
+)
+
+paired_wgcna_export$TOM_files <- TOM_files
+paired_wgcna_export$TOM <- NULL
+
+saveRDS(paired_wgcna_export, file = sprintf("paired_wgcna_export_GSE62043_%s.rds", stamp))
+```
