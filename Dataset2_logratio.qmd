@@ -1,0 +1,765 @@
+---
+title: "Dataset2_logratio"
+format: html
+editor: visual
+---
+
+```{r}
+# Setup
+knitr::opts_chunk$set(echo = TRUE)
+
+library(WGCNA)
+library(dplyr)
+
+options(stringsAsFactors = FALSE)
+disableWGCNAThreads()
+set.seed(1)
+
+# Parameters
+powers         <- 1:20
+networkType    <- "signed"
+TOMType        <- "signed"
+minModuleSize  <- 70
+mergeCutHeight <- 0.25
+maxBlockSize   <- 12000
+saveTOMs       <- FALSE
+TOMfileBase    <- "GSE62043_allgenes_TOM"
+
+out_dir <- "wgcna_allgenes_results"
+dir.create(out_dir, showWarnings = FALSE)
+```
+
+```{r}
+# Load cleaned dataset
+input_file <- "GSE62043_clean_noOutliers_20251223.RData"
+load(input_file)
+cat("Loaded:", input_file, "\n")
+
+stopifnot(exists("expr_gene"), exists("sample_info"))
+stopifnot(identical(colnames(expr_gene), rownames(sample_info)))
+
+# Build tumour-normal Δ-expression (paired) 
+expr_norm   <- expr_gene
+patient_ids <- sort(unique(sample_info$patient_id))
+
+expr_delta <- sapply(patient_ids, function(pid) {
+  normal_sample <- rownames(sample_info)[sample_info$patient_id == pid & sample_info$condition == "normal"]
+  tumor_sample  <- rownames(sample_info)[sample_info$patient_id == pid & sample_info$condition == "tumor"]
+  if (length(normal_sample) != 1 || length(tumor_sample) != 1) {
+    stop("Patient ", pid, " does not have exactly one normal and one tumor sample.")
+  }
+  expr_norm[, tumor_sample] - expr_norm[, normal_sample]
+})
+
+expr_delta <- as.matrix(expr_delta)  # genes x patients
+colnames(expr_delta) <- patient_ids
+cat("expr_delta dims (genes x patients):", nrow(expr_delta), "x", ncol(expr_delta), "\n")
+```
+
+```{r}
+# Prepare WGCNA input (patients x genes)
+datExpr <- t(expr_delta)
+cat("datExpr dims (patients x genes):", nrow(datExpr), "x", ncol(datExpr), "\n")
+
+gsg <- goodSamplesGenes(datExpr, verbose = 3)
+if (!gsg$allOK) {
+  cat("Removing bad samples/genes suggested by goodSamplesGenes...\n")
+  datExpr <- datExpr[gsg$goodSamples, gsg$goodGenes]
+}
+cat("datExpr after gsg:", nrow(datExpr), "x", ncol(datExpr), "\n")
+
+# QC (PCA + clustering)
+pca <- prcomp(datExpr, scale. = TRUE)
+plot(pca$x[, 1], pca$x[, 2], pch = 19,
+     xlab = "PC1", ylab = "PC2",
+     main = "PCA on Δ-expression (patients)")
+text(pca$x[, 1], pca$x[, 2], labels = rownames(datExpr), pos = 3, cex = 0.6)
+
+sampleTree <- hclust(dist(datExpr), method = "average")
+plot(sampleTree, labels = rownames(datExpr), cex = 0.6,
+     main = "Patient clustering (Δ-expression)")
+```
+
+```{r}
+# Soft-threshold selection
+sft <- pickSoftThreshold(
+  datExpr,
+  powerVector = powers,
+  networkType = networkType,
+  verbose = 5
+)
+
+par(mfrow = c(1, 2))
+plot(sft$fitIndices[, 1],
+     -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+     xlab = "Soft Threshold (power)",
+     ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n",
+     main = "Scale independence")
+text(sft$fitIndices[, 1],
+     -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+     labels = powers, cex = 0.8, col = "red")
+abline(h = 0.80, col = "red")
+
+plot(sft$fitIndices[, 1],
+     sft$fitIndices[, 5],
+     xlab = "Soft Threshold (power)",
+     ylab = "Mean Connectivity",
+     type = "n",
+     main = "Mean connectivity")
+text(sft$fitIndices[, 1],
+     sft$fitIndices[, 5],
+     labels = powers, cex = 0.8, col = "red")
+
+signedR2 <- -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2]
+ok <- which(signedR2 >= 0.80)
+softPower <- if (length(ok) > 0) sft$fitIndices[ok[1], 1] else 6
+cat("Chosen softPower =", softPower, "\n")
+```
+
+```{r}
+# Network construction + module detection (blockwiseModules)
+net <- blockwiseModules(
+  datExpr,
+  power = softPower,
+  networkType = networkType,
+  TOMType = TOMType,
+  maxBlockSize = maxBlockSize,
+  minModuleSize = minModuleSize,
+  reassignThreshold = 0,
+  mergeCutHeight = mergeCutHeight,
+  numericLabels = FALSE,
+  pamRespectsDendro = FALSE,
+  saveTOMs = saveTOMs,
+  saveTOMFileBase = file.path(out_dir, TOMfileBase),
+  verbose = 3
+)
+
+moduleColors <- net$colors
+MEs <- orderMEs(net$MEs)
+
+cat("Number of modules (incl. grey):", length(unique(moduleColors)), "\n")
+print(table(moduleColors))
+```
+
+```{r}
+# Dendrogram plots per block
+for (b in seq_along(net$dendrograms)) {
+  pdf(file.path(out_dir, paste0("GeneDendrogram_Block", b, ".pdf")), width = 14, height = 8)
+  plotDendroAndColors(
+    net$dendrograms[[b]],
+    net$colors[net$blockGenes[[b]]],
+    groupLabels = paste0("Block ", b, " module colors"),
+    dendroLabels = FALSE,
+    hang = 0.03,
+    addGuide = TRUE,
+    guideHang = 0.05,
+    main = paste0("Gene dendrogram and module colors (Block ", b, ")")
+  )
+  dev.off()
+}
+```
+
+```{r}
+# Build patient-level traits
+pheno_patient <- sample_info[sample_info$condition == "normal", , drop = FALSE]
+stopifnot(!anyDuplicated(pheno_patient$patient_id))
+rownames(pheno_patient) <- pheno_patient$patient_id
+
+patient_ids <- rownames(datExpr)
+
+traits <- pheno_patient[patient_ids, c("Age", "Gender"), drop = FALSE]
+traits$Age <- as.numeric(traits$Age)
+traits$Gender <- ifelse(traits$Gender == "M", 1, ifelse(traits$Gender == "F", 0, NA))
+
+stopifnot(identical(rownames(MEs), rownames(traits)))
+
+# Module–trait correlations + heatmap
+moduleTraitCor    <- cor(MEs, traits, use = "p")
+moduleTraitPvalue <- corPvalueStudent(moduleTraitCor, nSamples = nrow(datExpr))
+
+textMatrix <- paste0(signif(moduleTraitCor, 2), "\n(", signif(moduleTraitPvalue, 1), ")")
+dim(textMatrix) <- dim(moduleTraitCor)
+
+labeledHeatmap(
+  Matrix = moduleTraitCor,
+  xLabels = colnames(traits),
+  yLabels = colnames(MEs),
+  ySymbols = colnames(MEs),
+  colors = blueWhiteRed(50),
+  textMatrix = textMatrix,
+  main = "Module–trait relationships (GSE62043 Δ-expression, all genes)"
+)
+
+write.csv(moduleTraitCor,    file = file.path(out_dir, "moduleTraitCor.csv"),    quote = FALSE)
+write.csv(moduleTraitPvalue, file = file.path(out_dir, "moduleTraitPvalue.csv"), quote = FALSE)
+```
+
+```{r}
+# Tumour association on Δ-expression (one-sample t-test per module)
+names(moduleColors) <- colnames(datExpr)
+mods <- sort(unique(moduleColors))
+
+moduleDelta <- sapply(mods, function(mod) {
+  genes <- names(moduleColors)[moduleColors == mod]
+  rowMeans(datExpr[, genes, drop = FALSE], na.rm = TRUE)
+})
+moduleDelta <- as.matrix(moduleDelta)
+
+tt_mod <- apply(moduleDelta, 2, function(x) {
+  x <- x[is.finite(x)]
+  out <- t.test(x, mu = 0)
+  c(n = length(x),
+    mean = mean(x),
+    t = unname(out$statistic),
+    p = unname(out$p.value))
+})
+
+tt_mod <- as.data.frame(t(tt_mod))
+tt_mod$FDR <- p.adjust(tt_mod$p, method = "BH")
+
+module_tumour_assoc <- data.frame(
+  Module = rownames(tt_mod),
+  n      = as.integer(tt_mod$n),
+  mean   = tt_mod$mean,
+  t      = tt_mod$t,
+  p      = tt_mod$p,
+  FDR    = tt_mod$FDR,
+  row.names = NULL
+) %>% arrange(FDR)
+
+print(module_tumour_assoc)
+
+write.csv(
+  module_tumour_assoc,
+  file = file.path(out_dir, "module_tumour_assoc_ttest_delta_vs0.csv"),
+  row.names = FALSE, quote = FALSE
+)
+
+if (requireNamespace("pheatmap", quietly = TRUE)) {
+  mat_t <- matrix(module_tumour_assoc$t, ncol = 1)
+  rownames(mat_t) <- module_tumour_assoc$Module
+  colnames(mat_t) <- "Tumour (Δ vs 0)"
+
+  cell_txt <- matrix(
+    paste0("mean=", sprintf("%.3f", module_tumour_assoc$mean),
+           "\nFDR=", signif(module_tumour_assoc$FDR, 2)),
+    ncol = 1
+  )
+  rownames(cell_txt) <- module_tumour_assoc$Module
+  colnames(cell_txt) <- "Tumour"
+
+  pheatmap::pheatmap(
+    mat_t,
+    cluster_rows = FALSE,
+    cluster_cols = FALSE,
+    display_numbers = cell_txt,
+    fontsize_number = 8,
+    main = "Tumour association per module\n(one-sample t-test of mean Δ-expression vs 0)"
+  )
+}
+```
+
+```{r}
+# Hub metrics: kWithin + MM + GS (traits) + top hubs
+stopifnot(length(moduleColors) == ncol(datExpr))
+names(moduleColors) <- colnames(datExpr)
+geneNames <- colnames(datExpr)
+
+kWithin <- setNames(rep(NA_real_, length(geneNames)), geneNames)
+
+for (b in seq_along(net$blockGenes)) {
+  idx <- net$blockGenes[[b]]
+  genes_b <- geneNames[idx]
+  dat_b <- datExpr[, idx, drop = FALSE]
+
+  adjacency_b <- adjacency(
+    dat_b,
+    power = softPower,
+    type  = networkType,
+    corFnc = "cor",
+    corOptions = list(use = "p")
+  )
+  dimnames(adjacency_b) <- list(genes_b, genes_b)
+
+  IMConn_b <- intramodularConnectivity(adjacency_b, moduleColors[idx])
+  kWithin[genes_b] <- IMConn_b$kWithin
+
+  rm(adjacency_b, IMConn_b)
+  gc()
+}
+
+geneModuleMembership <- as.data.frame(cor(datExpr, MEs, use = "p"))
+rownames(geneModuleMembership) <- geneNames
+colnames(geneModuleMembership) <- paste0("MM", colnames(MEs))
+
+MMpvalue <- as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples = nrow(datExpr)))
+rownames(MMpvalue) <- geneNames
+colnames(MMpvalue) <- paste0("p.MM", colnames(MEs))
+
+ownME  <- paste0("ME", moduleColors)
+MM_own <- mapply(function(g, me) geneModuleMembership[g, paste0("MM", me)], geneNames, ownME)
+pMM_own <- mapply(function(g, me) MMpvalue[g, paste0("p.MM", me)], geneNames, ownME)
+
+geneSignificance <- as.data.frame(cor(datExpr, traits, use = "p"))
+rownames(geneSignificance) <- geneNames
+colnames(geneSignificance) <- paste0("GS", colnames(traits))
+
+GSpvalue <- as.data.frame(corPvalueStudent(as.matrix(geneSignificance), nSamples = nrow(datExpr)))
+rownames(GSpvalue) <- geneNames
+colnames(GSpvalue) <- paste0("p.GS", colnames(traits))
+
+GS_maxAbs <- apply(geneSignificance, 1, function(x) max(abs(x), na.rm = TRUE))
+
+hubData <- data.frame(
+  gene   = geneNames,
+  module = unname(moduleColors),
+  kWithin = as.numeric(kWithin[geneNames]),
+  MM_own  = as.numeric(MM_own),
+  pMM_own = as.numeric(pMM_own),
+  GS_maxAbs = as.numeric(GS_maxAbs),
+  geneModuleMembership,
+  MMpvalue,
+  geneSignificance,
+  GSpvalue,
+  row.names = NULL
+)
+
+modules <- sort(unique(moduleColors))
+modules <- setdiff(modules, "grey")
+
+hubList <- lapply(modules, function(mod) {
+  hubData %>%
+    dplyr::filter(module == mod) %>%
+    dplyr::arrange(dplyr::desc(kWithin)) %>%
+    head(10)
+})
+names(hubList) <- modules
+
+hubTop10 <- dplyr::bind_rows(lapply(names(hubList), function(mod) {
+  cbind(module = mod, hubList[[mod]])
+}))
+
+write.csv(hubData,  file = file.path(out_dir, "hubData_MM_GS_kWithin_allGenes.csv"), row.names = FALSE, quote = FALSE)
+write.csv(hubTop10, file = file.path(out_dir, "hubGenes_top10_perModule_kWithin.csv"), row.names = FALSE, quote = FALSE)
+```
+
+```{r}
+# Export module gene lists + save key objects  
+moduleGenes <- split(colnames(datExpr), moduleColors)
+
+mod_dir <- file.path(out_dir, "modules")
+dir.create(mod_dir, showWarnings = FALSE)
+
+for (mod in names(moduleGenes)) {
+  write.table(moduleGenes[[mod]],
+              file = file.path(mod_dir, paste0("module_", mod, "_genes.txt")),
+              row.names = FALSE,
+              col.names = FALSE,
+              quote = FALSE)
+}
+
+save(
+  datExpr, traits, MEs, moduleColors, moduleTraitCor, moduleTraitPvalue,
+  hubData, hubTop10,
+  file = file.path(out_dir, "WGCNA_allgenes_results.RData"),
+  compress = "xz"
+)
+
+cat("Done.\nResults in:", out_dir, "\n")
+```
+
+```{r}
+# Compare exact paired WGCNA vs LogFold (Δ) WGCNA
+paired_file <- "paired_wgcna_export_GSE62043_20260102.rds"
+paired <- readRDS(paired_file)
+
+moduleColors_exact <- paired$moduleColors
+softPower_exact    <- paired$softPower
+networkType_exact  <- if (!is.null(paired$networkType)) paired$networkType else "unsigned"
+TOMType_exact      <- if (!is.null(paired$TOMType)) paired$TOMType else "unsigned"
+
+moduleColors_logfc <- moduleColors
+names(moduleColors_logfc) <- colnames(datExpr)
+
+softPower_logfc   <- softPower
+networkType_logfc <- networkType
+TOMType_logfc     <- TOMType
+
+stopifnot(!is.null(names(moduleColors_exact)))
+common_genes <- intersect(names(moduleColors_exact), names(moduleColors_logfc))
+stopifnot(length(common_genes) > 0)
+
+me <- moduleColors_exact[common_genes]
+ml <- moduleColors_logfc[common_genes]
+
+tab_counts <- as.matrix(table(Exact = me, LogFold = ml))
+rownames(tab_counts) <- paste0(rownames(tab_counts), " (n=", rowSums(tab_counts), ")")
+colnames(tab_counts) <- paste0(colnames(tab_counts), " (n=", colSums(tab_counts), ")")
+
+if (requireNamespace("pheatmap", quietly = TRUE)) {
+  pheatmap::pheatmap(
+    tab_counts,
+    cluster_rows = TRUE,
+    cluster_cols = TRUE,
+    display_numbers = tab_counts,
+    number_format = "%d",
+    fontsize_number = 9,
+    main = "Module overlap: Exact paired WGCNA vs LogFold (Δ) WGCNA"
+  )
+} else {
+  print(tab_counts)
+}
+
+if (requireNamespace("mclust", quietly = TRUE)) {
+  ari <- mclust::adjustedRandIndex(as.integer(factor(me)), as.integer(factor(ml)))
+  cat("ARI(Exact vs LogFold) =", ari, "\n")
+}
+
+stopifnot(!is.null(paired$lmm_results), nrow(paired$lmm_results) > 0)
+lmm_exact <- paired$lmm_results
+
+best_exact_ME <- if ("FDR_tumour" %in% names(lmm_exact)) {
+  lmm_exact$module[which.min(lmm_exact$FDR_tumour)]
+} else if ("FDR" %in% names(lmm_exact)) {
+  lmm_exact$module[which.min(lmm_exact$FDR)]
+} else {
+  lmm_exact$module[which.min(lmm_exact$p_tumour)]
+}
+best_exact_mod <- sub("^ME", "", best_exact_ME)
+
+stopifnot(exists("moduleTraitPvalue"))
+trait_pick <- if ("Age" %in% colnames(moduleTraitPvalue)) "Age" else colnames(moduleTraitPvalue)[1]
+best_logfc_ME  <- rownames(moduleTraitPvalue)[which.min(moduleTraitPvalue[, trait_pick])]
+best_logfc_mod <- sub("^ME", "", best_logfc_ME)
+
+genes_exact_top <- intersect(names(moduleColors_exact)[moduleColors_exact == best_exact_mod], common_genes)
+genes_logfc_top <- intersect(names(moduleColors_logfc)[moduleColors_logfc == best_logfc_mod], common_genes)
+
+jaccard <- length(intersect(genes_exact_top, genes_logfc_top)) / length(union(genes_exact_top, genes_logfc_top))
+
+cat("Top Exact module (tumour LMM):", best_exact_mod, " (", best_exact_ME, ")\n", sep = "")
+cat("Top LogFold module (trait=", trait_pick, "): ", best_logfc_mod, " (", best_logfc_ME, ")\n", sep = "")
+cat("Jaccard(top modules) =", jaccard, "\n")
+
+maxGenesCompare <- 3000
+vars_common <- apply(datExpr[, common_genes, drop = FALSE], 2, var, na.rm = TRUE)
+genes_comp <- names(sort(vars_common, decreasing = TRUE))[1:min(maxGenesCompare, length(vars_common))]
+
+X_log <- datExpr[, genes_comp, drop = FALSE]
+A_log <- adjacency(X_log, power = softPower_logfc, type = networkType_logfc)
+T_log <- TOMsimilarity(A_log, TOMType = TOMType_logfc)
+dimnames(T_log) <- list(genes_comp, genes_comp)
+
+stopifnot(exists("expr_gene"))
+datExpr_exact <- t(expr_gene)
+
+genes_comp2 <- intersect(genes_comp, colnames(datExpr_exact))
+stopifnot(length(genes_comp2) > 1)
+
+X_exact <- datExpr_exact[, genes_comp2, drop = FALSE]
+A_exact <- adjacency(X_exact, power = softPower_exact, type = networkType_exact)
+T_exact <- TOMsimilarity(A_exact, TOMType = TOMType_exact)
+dimnames(T_exact) <- list(genes_comp2, genes_comp2)
+
+genes_comp3 <- intersect(rownames(T_log), rownames(T_exact))
+T1 <- T_exact[genes_comp3, genes_comp3]
+T2 <- T_log[genes_comp3, genes_comp3]
+
+v1 <- T1[upper.tri(T1)]
+v2 <- T2[upper.tri(T2)]
+
+rho_edges <- suppressWarnings(cor(v1, v2, method = "spearman", use = "complete.obs"))
+cat("Spearman rho (TOM edges: Exact vs LogFold) =", rho_edges, "\n")
+
+set.seed(1)
+maxEdgesTest <- 200000
+idx <- if (length(v1) > maxEdgesTest) sample.int(length(v1), maxEdgesTest) else seq_along(v1)
+print(cor.test(v1[idx], v2[idx], method = "spearman"))
+
+maxPlot <- 50000
+idxp <- if (length(v1) > maxPlot) sample.int(length(v1), maxPlot) else seq_along(v1)
+plot(v1[idxp], v2[idxp], pch = 20,
+     xlab = "Exact paired WGCNA TOM edge weight",
+     ylab = "LogFold (Δ) WGCNA TOM edge weight",
+     main = "Edge-weight agreement (TOM): Exact vs LogFold")
+
+k_exact <- rowSums(T1) - diag(T1)
+k_log   <- rowSums(T2) - diag(T2)
+
+rho_hubs <- suppressWarnings(cor(k_exact, k_log, method = "spearman", use = "complete.obs"))
+cat("Spearman rho (hub degree: Exact vs LogFold) =", rho_hubs, "\n")
+print(cor.test(k_exact, k_log, method = "spearman"))
+
+topK <- c(25, 50, 75, 100)
+for (K in topK) {
+  K <- min(K, length(k_exact))
+  hubs_e <- names(sort(k_exact, decreasing = TRUE))[1:K]
+  hubs_l <- names(sort(k_log,   decreasing = TRUE))[1:K]
+  n <- length(intersect(hubs_e, hubs_l))
+  cat("N =", K, ", overlap:", n, "=>", round(100 * n / K, 2), "%\n")
+}
+```
+
+```{r}
+# Top-5 hub genes (lightcyan & yellow) + LaTeX table
+modules_of_interest <- c("lightcyan", "yellow")
+
+names(moduleColors) <- colnames(datExpr)
+geneNames <- colnames(datExpr)
+
+missing_mods <- setdiff(modules_of_interest, unique(moduleColors))
+if (length(missing_mods) > 0) {
+  warning("These modules are not present in moduleColors: ", paste(missing_mods, collapse = ", "))
+}
+modules_of_interest <- intersect(modules_of_interest, unique(moduleColors))
+stopifnot(length(modules_of_interest) > 0)
+
+tt_gene <- apply(datExpr, 2, function(x) {
+  x <- x[is.finite(x)]
+  if (length(x) < 2) return(c(n = length(x), mean = mean(x), t = NA_real_, p = NA_real_))
+  out <- t.test(x, mu = 0)
+  c(n = length(x),
+    mean = unname(out$estimate),
+    t = unname(out$statistic),
+    p = unname(out$p.value))
+})
+tt_gene <- as.data.frame(t(tt_gene))
+tt_gene$FDR <- p.adjust(tt_gene$p, method = "BH")
+
+t_gene   <- setNames(tt_gene$t,   rownames(tt_gene))
+p_gene   <- setNames(tt_gene$p,   rownames(tt_gene))
+fdr_gene <- setNames(tt_gene$FDR, rownames(tt_gene))
+
+stopifnot(length(MM_own) == length(geneNames))
+
+hub_top5_lc_yellow <- dplyr::tibble(
+  gene = geneNames,
+  Module = unname(moduleColors[geneNames]),
+  kWithin = as.numeric(kWithin[geneNames]),
+  `Module Membership` = as.numeric(MM_own),
+  GS = as.numeric(t_gene[geneNames]),
+  `p-value` = as.numeric(p_gene[geneNames]),
+  `p-value (adjusted)` = as.numeric(fdr_gene[geneNames])
+) %>%
+  dplyr::filter(Module %in% modules_of_interest) %>%
+  dplyr::group_by(Module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup()
+
+print(hub_top5_lc_yellow)
+
+hub_top5_fmt <- hub_top5_lc_yellow %>%
+  dplyr::mutate(
+    kWithin = round(kWithin, 3),
+    `Module Membership` = round(`Module Membership`, 3),
+    GS = round(GS, 3),
+    `p-value` = signif(`p-value`, 3),
+    `p-value (adjusted)` = signif(`p-value (adjusted)`, 3)
+  )
+
+make_latex_table <- function(df, caption, label) {
+  esc <- function(x) gsub("_", "\\\\_", x, fixed = TRUE)
+  df2 <- df
+  df2$gene <- esc(df2$gene)
+  df2$Module <- esc(df2$Module)
+
+  lines <- c(
+    "\\begin{table}[H]",
+    "\\centering",
+    paste0("\\caption{", caption, "}"),
+    paste0("\\label{", label, "}"),
+    "\\begin{tabular}{llrrrrr}",
+    "\\toprule",
+    "Gene & Module & kWithin & Module Membership & GS & p-value & p-value (adjusted) \\\\",
+    "\\midrule"
+  )
+
+  for (i in seq_len(nrow(df2))) {
+    lines <- c(lines, sprintf(
+      "%s & %s & %.3f & %.3f & %.3f & %.3g & %.3g \\\\",
+      df2$gene[i],
+      df2$Module[i],
+      df2$kWithin[i],
+      df2$`Module Membership`[i],
+      df2$GS[i],
+      df2$`p-value`[i],
+      df2$`p-value (adjusted)`[i]
+    ))
+  }
+
+  lines <- c(lines, "\\bottomrule", "\\end{tabular}", "\\end{table}")
+  paste(lines, collapse = "\n")
+}
+
+latex_code <- make_latex_table(
+  hub_top5_fmt,
+  caption = "The five genes in each module with the highest intramodular connectivity (lightcyan and yellow; GS from one-sample t-test on $\\Delta$-expression vs 0).",
+  label   = "tab:important_genes_logfold_lightcyan_yellow"
+)
+
+cat(latex_code, sep = "\n")
+writeLines(latex_code, file.path(out_dir, "important_genes_lightcyan_yellow_top5.tex"))
+```
+
+```{r}
+# kWithinNorm overlap (exact vs logfold)  
+suppressPackageStartupMessages({
+  library(dplyr)
+  if (requireNamespace("Matrix", quietly = TRUE)) library(Matrix)
+})
+
+extract_TOM_matrix <- function(env) {
+  if (!exists("TOM", envir = env)) {
+    stop("No object named 'TOM' found in TOM file. Objects: ", paste(ls(env), collapse = ", "))
+  }
+  x <- get("TOM", envir = env)
+  if (is.list(x) && length(x) == 1L) x <- x[[1]]
+  if (inherits(x, "dist")) x <- as.matrix(x)
+  d <- dim(x)
+  if (is.null(d) || length(d) != 2L || d[1] != d[2]) {
+    stop("Loaded 'TOM' has class: ", paste(class(x), collapse = ", "),
+         " and dim: ", paste(d, collapse = "x"), ".")
+  }
+  dg <- diag(x)
+  if (is.finite(mean(dg, na.rm = TRUE)) && mean(dg, na.rm = TRUE) < 0.5) {
+    x <- 1 - x
+    diag(x) <- 1
+  }
+  x
+}
+
+kWithinNorm_blockwise_from_kWithin <- function(kWithin, moduleColors, blockGenes, drop_grey = TRUE) {
+  stopifnot(!is.null(names(kWithin)), !is.null(names(moduleColors)))
+  if (is.numeric(blockGenes[[1]])) {
+    geneNames <- names(moduleColors)
+    blockGenes <- lapply(blockGenes, function(idx) geneNames[idx])
+  }
+
+  out <- lapply(seq_along(blockGenes), function(b) {
+    genes_b <- intersect(blockGenes[[b]], intersect(names(kWithin), names(moduleColors)))
+    if (length(genes_b) < 2) return(NULL)
+
+    cols_b <- moduleColors[genes_b]
+    kv_b   <- kWithin[genes_b]
+
+    mods <- unique(cols_b)
+    if (drop_grey) mods <- setdiff(mods, "grey")
+
+    bind_rows(lapply(mods, function(mod) {
+      genes_m <- genes_b[cols_b == mod]
+      m <- length(genes_m)
+      if (m < 2) return(NULL)
+
+      tibble(
+        gene = genes_m,
+        module = mod,
+        block = b,
+        moduleSize_block = m,
+        kWithin = as.numeric(kv_b[genes_m]),
+        kWithinNorm = as.numeric(kv_b[genes_m]) / (m - 1)
+      )
+    }))
+  })
+
+  bind_rows(out)
+}
+
+kWithinNorm_from_TOMfiles <- function(TOM_files, moduleColors_exact, drop_grey = TRUE) {
+  stopifnot(length(TOM_files) > 0)
+  stopifnot(!is.null(names(moduleColors_exact)))
+
+  if (!all(file.exists(TOM_files))) {
+    TOM_files2 <- file.path(getwd(), TOM_files)
+    if (all(file.exists(TOM_files2))) TOM_files <- TOM_files2
+  }
+
+  out <- lapply(seq_along(TOM_files), function(b) {
+    f <- TOM_files[[b]]
+    env <- new.env(parent = emptyenv())
+    load(f, envir = env)
+
+    TOM <- extract_TOM_matrix(env)
+
+    genes_b <- rownames(TOM)
+    if (is.null(genes_b)) stop("TOM in file has no rownames (gene IDs): ", f)
+
+    genes_b <- intersect(genes_b, names(moduleColors_exact))
+    if (length(genes_b) < 2) return(NULL)
+
+    TOM <- TOM[genes_b, genes_b, drop = FALSE]
+    cols_b <- moduleColors_exact[genes_b]
+
+    mods <- unique(cols_b)
+    if (drop_grey) mods <- setdiff(mods, "grey")
+
+    bind_rows(lapply(mods, function(mod) {
+      genes_m <- genes_b[cols_b == mod]
+      m <- length(genes_m)
+      if (m < 2) return(NULL)
+
+      subT <- TOM[genes_m, genes_m, drop = FALSE]
+      kW <- if (inherits(subT, "Matrix")) Matrix::rowSums(subT) else rowSums(subT, na.rm = TRUE)
+      kW <- kW - diag(subT)
+
+      tibble(
+        gene = genes_m,
+        module = mod,
+        block = b,
+        moduleSize_block = m,
+        kWithin = as.numeric(kW),
+        kWithinNorm = as.numeric(kW) / (m - 1)
+      )
+    }))
+  })
+
+  bind_rows(out)
+}
+
+names(moduleColors) <- colnames(datExpr)
+stopifnot(!is.null(names(kWithin)))
+stopifnot(!is.null(net$blockGenes))
+
+kw_logfc <- kWithinNorm_blockwise_from_kWithin(
+  kWithin = kWithin,
+  moduleColors = moduleColors,
+  blockGenes = net$blockGenes,
+  drop_grey = TRUE
+)
+
+moduleColors_exact <- paired$moduleColors
+stopifnot(!is.null(names(moduleColors_exact)))
+stopifnot(!is.null(paired$hubData), all(c("gene", "module", "kWithin") %in% names(paired$hubData)))
+
+modSize_exact <- table(moduleColors_exact)
+
+kw_exact <- paired$hubData %>%
+  dplyr::select(gene, module, kWithin) %>%
+  dplyr::mutate(
+    moduleSize = as.integer(modSize_exact[module]),
+    kWithinNorm = as.numeric(kWithin) / pmax(moduleSize - 1L, 1L)
+  ) %>%
+  dplyr::filter(is.finite(kWithinNorm), moduleSize >= 2) %>%
+  dplyr::filter(module != "grey") %>%
+  dplyr::distinct(gene, .keep_all = TRUE)
+
+common_genes2 <- intersect(kw_exact$gene, kw_logfc$gene)
+
+kwE <- kw_exact %>% filter(gene %in% common_genes2) %>% distinct(gene, .keep_all = TRUE)
+kwL <- kw_logfc %>% filter(gene %in% common_genes2) %>% distinct(gene, .keep_all = TRUE)
+
+get_top <- function(df, K) df %>% arrange(desc(kWithinNorm)) %>% slice_head(n = K) %>% pull(gene)
+
+topK2 <- c(25, 100, 500, 2000)
+for (K in topK2) {
+  K <- min(K, nrow(kwE), nrow(kwL))
+  hubs_e <- get_top(kwE, K)
+  hubs_l <- get_top(kwL, K)
+  ov <- length(intersect(hubs_e, hubs_l))
+  cat("Top", K, ": overlap =", ov, " (", round(100 * ov / K, 1), "%)\n", sep = "")
+}
+
+overlap_top25 <- intersect(get_top(kwE, 25), get_top(kwL, 25))
+overlap_top25
+```

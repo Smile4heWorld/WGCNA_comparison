@@ -1,0 +1,1369 @@
+---
+title: "SD_WGCNA_comp_all"
+format: html
+editor: visual
+---
+
+---
+title: "SD_WGCNA_exactly"
+output: html_document
+date: "2025-12-23"
+---
+
+```{r, message=FALSE}
+#Load cleaned dataset + safety stuff
+
+library(WGCNA)
+library(nlme)
+library(dplyr)
+
+options(stringsAsFactors = FALSE)
+disableWGCNAThreads()  # reproducibility
+set.seed(1)
+
+# Point to your saved file
+infile <- "GSE62043_clean_noOutliers_20251223.RData"
+load(infile)
+
+# Expect: expr_gene (genes x samples), sample_info, datExpr0 (samples x genes) optional,
+# and sample_traits already saved.
+stopifnot(exists("expr_gene"), exists("sample_info"))
+if (!exists("datExpr0")) datExpr0 <- t(expr_gene)
+stopifnot(identical(rownames(datExpr0), rownames(sample_info)))
+
+# Build/confirm traits: patient_id, tumour, Age, Gender (no Stage_num)
+if (!exists("sample_traits")) {
+  sample_traits <- sample_info[, intersect(c("patient_id","tumour","Age","Gender"),
+                                           colnames(sample_info)), drop = FALSE]
+}
+# Coerce types safely
+sample_traits$patient_id <- factor(sample_traits$patient_id)
+sample_traits$tumour     <- as.integer(sample_traits$tumour)
+if ("Age" %in% names(sample_traits))    sample_traits$Age <- suppressWarnings(as.numeric(sample_traits$Age))
+if ("Gender" %in% names(sample_traits)) {
+  g <- toupper(trimws(as.character(sample_traits$Gender)))
+  g[!g %in% c("F","M")] <- NA_character_
+  sample_traits$Gender <- factor(g, levels = c("F","M"))
+}
+rownames(sample_traits) <- rownames(sample_info)
+stopifnot(identical(rownames(datExpr0), rownames(sample_traits)))
+```
+
+```{r}
+# WGCNA: Choosing soft-threshold (unsigned)
+
+gsg <- goodSamplesGenes(datExpr0, verbose = 3); stopifnot(gsg$allOK)
+
+nGenesForSFT <- min(5000, ncol(datExpr0))
+vars <- apply(datExpr0, 2, var)
+topGenesSFT <- names(sort(vars, decreasing = TRUE))[1:nGenesForSFT]
+datExpr_sft <- datExpr0[, topGenesSFT, drop = FALSE]
+
+powers <- 1:20
+sft <- pickSoftThreshold(datExpr_sft, powerVector = powers,
+                         networkType = "unsigned", verbose = 5)
+
+par(mfrow = c(1,2))
+plot(sft$fitIndices[,1],
+     -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     xlab = "Soft Threshold (power)",
+     ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n", main = "Scale independence")
+text(sft$fitIndices[,1],
+     -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     labels = powers, cex = 0.8, col = "red")
+abline(h = 0.90, col = "red")
+
+plot(sft$fitIndices[,1], sft$fitIndices[,5],
+     xlab = "Soft Threshold (power)",
+     ylab = "Mean Connectivity",
+     type = "n", main = "Mean connectivity")
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels = powers, cex = 0.8, col = "red")
+
+fit <- -sign(sft$fitIndices[,3]) * sft$fitIndices[,2]
+softPower <- if (any(fit >= 0.90, na.rm = TRUE)) powers[which(fit >= 0.90)[1]] else 7
+softPower # 9
+
+```
+
+```{r}
+# Network construction (unsigned Pearson)
+
+maxBlockSize <- 12000
+net <- blockwiseModules(
+  datExpr0,
+  power              = softPower,
+  networkType        = "unsigned",
+  TOMType            = "unsigned",
+  corType            = "pearson",
+  maxBlockSize       = maxBlockSize,
+  minModuleSize      = 70,
+  reassignThreshold  = 0,
+  mergeCutHeight     = 0.25,
+  deepSplit          = 2,
+  pamRespectsDendro  = FALSE,
+  numericLabels      = FALSE,
+  saveTOMs           = TRUE,
+  saveTOMFileBase    = sprintf("GSE62043_TOM_unsigned_power%i", softPower),
+  verbose            = 3
+)
+
+
+moduleColors <- net$colors
+names(moduleColors) <- colnames(datExpr0)
+MEs <- orderMEs(net$MEs)
+MEs <- MEs[, !grepl("^MEgrey$", names(MEs)), drop = FALSE]
+table(moduleColors)
+
+```
+
+```{r}
+
+# Li-style LMMs for module eigengenes:
+#   ME ~ tumour + Age + Gender + (1|patient_id)
+#   (paired subjects only; drop if missing covars)
+
+ctrl_lme <- nlme::lmeControl(
+  singular.ok = TRUE, returnObject = TRUE,
+  opt = "optim", msMaxIter = 200, maxIter = 200, niterEM = 50
+)
+
+stopifnot(identical(rownames(MEs), rownames(sample_traits)))
+datLMM <- cbind(sample_traits, as.data.frame(MEs))
+
+# covariates are fixed: Age + Gender (drop if all-NA)
+covars <- c("Age","Gender")
+covars <- covars[!sapply(datLMM[covars], function(v) all(is.na(v)))]
+rhs <- paste(c("tumour", covars), collapse = " + ")
+
+modNames <- colnames(MEs)
+
+lmm_results <- lapply(modNames, function(mn) {
+
+  # Keep only rows with complete data for this module + covars
+  cols_needed <- c("patient_id", "tumour", covars, mn)
+  d <- datLMM[, cols_needed, drop = FALSE]
+  d <- d[complete.cases(d), , drop = FALSE]
+
+  # Now enforce true pairing on the rows that will actually be modeled
+  tabTN <- with(d, table(patient_id, tumour))
+  keep_pat <- rownames(tabTN)[rowSums(tabTN > 0) == 2]
+  d <- d[d$patient_id %in% keep_pat, , drop = FALSE]
+
+  # If nothing left, return NAs
+  if (nrow(d) < 4) {
+    return(data.frame(module = mn, beta_tumour = NA, t_tumour = NA, p_tumour = NA))
+  }
+
+  form <- as.formula(paste(mn, "~", rhs))
+
+  fit <- tryCatch(
+    nlme::lme(form, random = ~ 1 | patient_id,
+              data = d, method = "REML", control = ctrl_lme),
+    error = function(e) NULL
+  )
+
+  if (is.null(fit)) {
+    return(data.frame(module = mn, beta_tumour = NA, t_tumour = NA, p_tumour = NA))
+  }
+
+  sm <- summary(fit)
+  coef_name <- if ("tumour" %in% rownames(sm$tTable)) "tumour" else
+    grep("^tumour", rownames(sm$tTable), value = TRUE)[1]
+
+  data.frame(
+    module      = mn,
+    beta_tumour = sm$tTable[coef_name, "Value"],
+    t_tumour    = sm$tTable[coef_name, "t-value"],
+    p_tumour    = sm$tTable[coef_name, "p-value"],
+    row.names   = NULL
+  )
+})
+
+
+lmm_results_df <- do.call(rbind, lmm_results)
+lmm_results_df$FDR_tumour <- p.adjust(lmm_results_df$p_tumour, method = "BH")
+lmm_results_df <- lmm_results_df[order(lmm_results_df$p_tumour), ]
+lmm_results_df
+
+# Heatmap
+if (requireNamespace("pheatmap", quietly = TRUE)) {
+  lmm_results_df$module_clean <- substring(lmm_results_df$module, 3)
+  tmat <- matrix(lmm_results_df$t_tumour,
+                 nrow = nrow(lmm_results_df),
+                 dimnames = list(lmm_results_df$module_clean, "Tumour (t)"))
+  pheatmap::pheatmap(tmat, main = "Module–tumour associations (LMM t-values)",
+                     cluster_rows = FALSE, cluster_cols = FALSE,
+                     display_numbers = round(tmat, 2))
+}
+
+
+```
+
+```{r}
+# MM (module membership) + GS (per-gene LMM |t| for tumour)
+
+datExpr <- datExpr0  # samples x genes
+
+# MM
+modNames_clean <- substring(colnames(MEs), 3)
+geneModuleMembership <- as.data.frame(WGCNA::cor(datExpr, MEs, use = "p"))
+colnames(geneModuleMembership) <- paste0("MM", modNames_clean)
+geneModuleMembership$gene <- colnames(datExpr)
+
+# Traits aligned to datExpr
+traits_full <- sample_traits[rownames(datExpr), , drop = FALSE]
+
+need_vars <- intersect(c("patient_id","tumour", covars), names(traits_full))
+keep1 <- complete.cases(traits_full[, need_vars, drop = FALSE])
+
+datExpr_ok <- datExpr[keep1, , drop = FALSE]
+traits_ok  <- traits_full[keep1, , drop = FALSE]
+
+# Keep only subjects with both tumour states (0 and 1)
+tab <- with(traits_ok, table(patient_id, tumour))
+keep_patients2 <- rownames(tab)[rowSums(tab > 0, na.rm = TRUE) == 2]
+keep_rows2 <- traits_ok$patient_id %in% keep_patients2
+
+datExpr_ok <- datExpr_ok[keep_rows2, , drop = FALSE]
+traits_ok  <- traits_ok [keep_rows2, , drop = FALSE]
+
+stopifnot(identical(rownames(datExpr_ok), rownames(traits_ok)))
+
+# pick genes for GS
+nGS <- min(8000, ncol(datExpr_ok))
+vars_ok <- apply(datExpr_ok, 2, var, na.rm = TRUE)
+genes_for_GS <- names(sort(vars_ok, decreasing = TRUE))[1:nGS]
+
+# safe column names
+X <- datExpr_ok[, genes_for_GS, drop = FALSE]
+safe_names   <- make.names(colnames(X), unique = TRUE)
+gene_to_safe <- setNames(safe_names, colnames(X))
+colnames(X)  <- safe_names
+
+datGS <- data.frame(traits_ok, X, check.names = FALSE)
+
+gs_rhs <- paste(c("tumour", covars), collapse = " + ")  # same as ME models
+gs_list <- lapply(genes_for_GS, function(g) {
+  g_safe <- gene_to_safe[[g]]
+  form <- as.formula(paste0(g_safe, " ~ ", gs_rhs))
+  fit <- tryCatch(
+    nlme::lme(form, random = ~ 1 | patient_id,
+              data = datGS, na.action = na.omit,
+              method = "REML", control = ctrl_lme),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(data.frame(gene = g, GS = NA_real_))
+  sm <- summary(fit)
+  coef_name <- if ("tumour" %in% rownames(sm$tTable)) "tumour" else
+                 grep("^tumour", rownames(sm$tTable), value = TRUE)[1]
+  data.frame(gene = g, GS = abs(sm$tTable[coef_name, "t-value"]))
+})
+geneGS <- do.call(rbind, gs_list)
+
+# Combine hub metrics
+hubData <- geneModuleMembership %>%
+  left_join(geneGS, by = "gene") %>%
+  mutate(module = moduleColors[match(gene, names(moduleColors))])
+
+```
+
+```{r}
+# kWithin (chunked within-module adjacency; memory-safe, faster)
+
+# Make sure datExpr exists and is aligned
+datExpr <- datExpr0
+datExpr <- as.matrix(datExpr)
+storage.mode(datExpr) <- "double"
+stopifnot(identical(colnames(datExpr), names(moduleColors)))
+
+compute_kWithin_chunked <- function(datExpr, moduleColors, softPower,
+                                   chunk_size = 500,
+                                   exclude_modules = "grey",
+                                   cor_use = "p") {
+
+  genes <- colnames(datExpr)
+  moduleColors <- moduleColors[genes]  # align defensively
+
+  mods <- unique(moduleColors)
+  mods <- setdiff(mods, exclude_modules)
+
+  kWithin <- setNames(rep(NA_real_, length(genes)), genes)
+
+  for (mod in mods) {
+    genes_in_mod <- genes[moduleColors == mod]
+    m0 <- length(genes_in_mod)
+    if (m0 < 5) next
+
+    X_all <- datExpr[, genes_in_mod, drop = FALSE]
+
+    # Drop zero-variance genes (they cause NA correlations)
+    v <- apply(X_all, 2, var, na.rm = TRUE)
+    keep <- is.finite(v) & v > 0
+
+    if (!all(keep)) {
+      genes_in_mod <- genes_in_mod[keep]
+      X_all <- X_all[, keep, drop = FALSE]
+    }
+
+    m <- ncol(X_all)
+    if (m < 5) next
+
+    idx_in_mod <- seq_len(m); names(idx_in_mod) <- colnames(X_all)
+    kW <- setNames(rep(NA_real_, m), colnames(X_all))
+
+    for (s in seq(1, m, by = chunk_size)) {
+      e <- min(m, s + chunk_size - 1)
+
+      X_chunk <- X_all[, s:e, drop = FALSE]
+      chunk_genes <- colnames(X_chunk)
+
+      C <- WGCNA::cor(X_chunk, X_all, use = cor_use)
+      A <- abs(C)^softPower
+
+      # Zero out self-adjacency for the chunk rows (vectorized)
+      diag_idx <- cbind(seq_len(nrow(A)), idx_in_mod[chunk_genes])
+      A[diag_idx] <- 0
+
+      kW[chunk_genes] <- rowSums(A, na.rm = TRUE)
+    }
+
+    kWithin[names(kW)] <- kW
+    cat(sprintf("Done kWithin for module %s (%d genes)\n", mod, length(kW)))
+  }
+
+  kWithin
+}
+
+# Compute + attach
+kWithin_vec <- compute_kWithin_chunked(datExpr, moduleColors, softPower, chunk_size = 500)
+hubData$kWithin <- unname(kWithin_vec[hubData$gene])
+
+# Top hubs per module (same as before, but now faster upstream)
+hubList <- hubData %>%
+  dplyr::filter(!is.na(kWithin)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = 10) %>%
+  dplyr::ungroup()
+
+hubList
+
+```
+
+```{r}
+#Table: Top 5 genes by kWithin in green/turquoise/salmon
+
+
+target_modules <- c("green", "turquoise", "salmon")
+pool_n <- 80  # take more than 5 so we can skip any NA/failed GS fits safely
+
+# --- Helper: compute GS for a given gene set (paired subset, same covars, same LMM spec) ---
+compute_GS_for_genes <- function(genes, datExpr_ok, traits_ok, covars, ctrl_lme) {
+  genes <- intersect(genes, colnames(datExpr_ok))
+  if (length(genes) == 0) return(data.frame(gene = character(), GS = numeric()))
+
+  X <- datExpr_ok[, genes, drop = FALSE]
+  safe <- make.names(colnames(X), unique = TRUE)
+  map  <- setNames(safe, colnames(X))
+  colnames(X) <- safe
+
+  datGS_small <- data.frame(traits_ok, X, check.names = FALSE)
+  rhs <- paste(c("tumour", covars), collapse = " + ")
+
+  out <- lapply(genes, function(g) {
+    g_safe <- map[[g]]
+    form <- as.formula(paste0(g_safe, " ~ ", rhs))
+
+    fit <- tryCatch(
+      nlme::lme(form, random = ~ 1 | patient_id,
+                data = datGS_small, na.action = na.omit,
+                method = "REML", control = ctrl_lme),
+      error = function(e) NULL
+    )
+    if (is.null(fit)) return(data.frame(gene = g, GS = NA_real_))
+
+    sm <- summary(fit)
+    rn <- rownames(sm$tTable)
+    coef_name <- if ("tumour" %in% rn) "tumour" else grep("^tumour", rn, value = TRUE)[1]
+    if (is.na(coef_name)) return(data.frame(gene = g, GS = NA_real_))
+
+    data.frame(gene = g, GS = abs(sm$tTable[coef_name, "t-value"]))
+  })
+
+  dplyr::bind_rows(out)
+}
+
+# --- Build a candidate pool: top kWithin genes per module ---
+pool <- hubData %>%
+  dplyr::filter(module %in% target_modules, !is.na(kWithin)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = pool_n) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(gene, module, kWithin, GS)
+
+
+
+
+# --- Add module membership (MM for that gene's own module) ---
+mm_df <- geneModuleMembership
+rownames(mm_df) <- mm_df$gene
+
+pool$MM <- mapply(function(g, mod) {
+  col <- paste0("MM", mod)
+  if (!col %in% colnames(mm_df)) return(NA_real_)
+  i <- match(g, mm_df$gene)
+  if (is.na(i)) return(NA_real_)
+  as.numeric(mm_df[i, col, drop = TRUE])
+}, pool$gene, pool$module)
+
+# --- Ensure GS exists for all genes in pool (compute missing ones only) ---
+missing_gs <- pool$gene[is.na(pool$GS)]
+missing_gs <- unique(missing_gs)
+
+if (length(missing_gs) > 0) {
+  gs_new <- compute_GS_for_genes(missing_gs, datExpr_ok, traits_ok, covars, ctrl_lme)
+  pool <- dplyr::left_join(pool, gs_new, by = "gene", suffix = c("", ".new"))
+  pool$GS <- ifelse(is.na(pool$GS), pool$GS.new, pool$GS)
+  pool$GS.new <- NULL
+}
+
+# --- Final: keep complete rows, take top 5 per module, order by kWithin ---
+top15 <- pool %>%
+  dplyr::filter(is.finite(kWithin), is.finite(MM), is.finite(GS)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup() %>%
+  dplyr::arrange(dplyr::desc(kWithin)) %>%
+  dplyr::select(gene, module, kWithin, MM, GS)
+
+# If you ended up with < 15 rows, increase pool_n (or allow more genes per module)
+if (nrow(top15) < 15) {
+  warning("Got only ", nrow(top15), " rows without NA. Try increasing pool_n (e.g., 150).")
+}
+
+# Render as a table
+knitr::kable(top15, digits = 3,
+             col.names = c("Gene", "Module", "kWithin", "Module membership (MM)", "Gene significance (GS)"),
+             caption = "Top 5 genes (by kWithin) in green, turquoise, salmon modules (no NA; ordered by kWithin).")
+
+
+raw_top5 <- hubData %>%
+  dplyr::filter(module %in% target_modules, !is.na(kWithin)) %>%
+  dplyr::group_by(module) %>%
+  dplyr::arrange(dplyr::desc(kWithin), .by_group = TRUE) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(gene, module, kWithin)
+
+final_top5 <- top15 %>%
+  dplyr::group_by(module) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(gene, module, kWithin)
+
+dplyr::anti_join(raw_top5, final_top5, by = c("gene","module")) # returns 0 rows
+
+
+
+```
+
+```{r}
+#Example GS vs MM plot (largest module that's not grey)
+
+tab <- sort(table(moduleColors), decreasing = TRUE)
+targetModule <- names(tab)[names(tab) != "grey"][1]
+
+mm_col <- paste0("MM", targetModule)
+inMod  <- hubData$module == targetModule
+
+if (!mm_col %in% names(hubData)) stop("Missing column ", mm_col, " (did you remove MEgrey but picked grey?)")
+
+df <- hubData[inMod, c("GS", mm_col), drop = FALSE]
+df <- df[complete.cases(df), , drop = FALSE]  # drop NA GS/MM rows
+
+if (nrow(df) < 2) stop("No non-NA points to plot for module ", targetModule)
+
+names(df) <- c("GS","MM")
+plot(df$MM, df$GS,
+     xlab = paste0("Module membership (", targetModule, ")"),
+     ylab = "Gene significance (|t| for tumour)",
+     main = paste("GS vs MM in", targetModule, "module"))
+abline(lm(GS ~ MM, data = df), lty = 2)
+
+
+```
+
+```{r}
+#Exports
+
+stamp <- format(Sys.Date(), "%Y%m%d")
+write.csv(lmm_results_df, file = sprintf("WGCNA_ME_LMM_AgeGender_%s.csv", stamp), row.names = FALSE)
+write.csv(hubList,       file = sprintf("WGCNA_top10_hubs_%s.csv", stamp), row.names = FALSE)
+
+moduleGenes <- split(hubData$gene, hubData$module)
+for (mod in names(moduleGenes)) {
+  write.table(moduleGenes[[mod]], file = paste0("module_", mod, "_genes.txt"),
+              row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+
+# Save analysis state (optional)
+save(net, moduleColors, MEs, softPower,
+     lmm_results_df, geneModuleMembership, geneGS, hubData, hubList,
+     file = sprintf("WGCNA_outputs_AgeGender_%s.RData", stamp), compress = "xz")
+
+```
+
+```{r}
+
+# ---- Save paired WGCNA outputs for reuse (2nd dataset) ----
+
+# Make sure gene IDs are attached everywhere
+moduleColors_paired <- moduleColors
+names(moduleColors_paired) <- colnames(datExpr0)
+
+MEs_paired <- MEs
+# (MEs already have rownames = samples; keep them)
+stopifnot(identical(rownames(MEs_paired), rownames(sample_traits)))
+
+hubData_paired <- hubData
+# Give hubData stable rownames for easy joins later
+if ("gene" %in% names(hubData_paired)) rownames(hubData_paired) <- hubData_paired$gene
+
+lmm_results_paired <- lmm_results_df
+
+# TOM note:
+# In this pipeline you used blockwiseModules(..., saveTOMs = FALSE),
+# and computed kWithin chunk-wise (no full TOM/adjacency stored).
+# So we export TOM as NULL (but keep TOM file info if it exists).
+TOM_paired <- NULL
+TOM_files  <- NULL
+if (exists("net") && is.list(net)) {
+  if (!is.null(net$TOMFiles)) TOM_files <- net$TOMFiles
+  if (!is.null(net$TOMFile))  TOM_files <- net$TOMFile
+}
+
+paired_wgcna_export <- list(
+  method      = "paired_WGCNA_blockwise_unsigned_AgeGender",
+  dataset     = "GSE62043",
+  date        = Sys.Date(),
+
+  # Network settings
+  softPower   = softPower,
+  networkType = "unsigned",
+  corType     = "pearson",
+  TOMType     = "unsigned",
+  params      = list(
+    minModuleSize  = 70,
+    mergeCutHeight = 0.25,
+    deepSplit      = 2,
+    maxBlockSize   = if (exists("maxBlockSize")) maxBlockSize else NA_integer_
+  ),
+
+  # Covariates used in LMMs
+  covariates  = covars,
+
+  # IDs
+  samples     = rownames(datExpr0),
+  genes       = colnames(datExpr0),
+
+  # Core WGCNA outputs
+  moduleColors = moduleColors_paired,
+  TOM          = TOM_paired,
+  TOM_files    = TOM_files,
+  MEs          = MEs_paired,
+
+  # Downstream association + hub summaries
+  lmm_results  = lmm_results_paired,
+  hubData      = hubData_paired,
+  hubList      = hubList,
+
+  # Helpful extras for re-use / comparison
+  geneModuleMembership = geneModuleMembership,
+  geneGS               = geneGS,
+  sample_traits        = sample_traits
+)
+
+paired_wgcna_export$TOM_files <- TOM_files
+paired_wgcna_export$TOM <- NULL  # keep NULL (TOM itself is huge)
+
+stamp <- format(Sys.Date(), "%Y%m%d")
+saveRDS(paired_wgcna_export,
+        file = sprintf("paired_wgcna_export_GSE62043_%s.rds", stamp))
+
+
+
+```
+
+NEW METHOD 1: LIMMA ------------------------------------------------------------
+
+```{r}
+library(limma)
+
+#set up factors
+limma_data <- datLMM
+#datExpr_ok are complete cases
+limma_expr <- t(datExpr_ok)
+
+
+
+
+limma_data$tumour  <- factor(limma_data$tumour, 
+                             levels = c(0,1),
+                             labels = c("normal", "tumour"))
+
+limma_data$patient_id <- factor(limma_data$patient_id)
+
+#same design as we are using for the first dataset
+design <- model.matrix(~ patient_id + tumour, data = limma_data)
+#colnames(design)
+
+#run Limma
+fit_limma2  <- lmFit(limma_expr, design)
+fit_limma2  <- eBayes(fit_limma2)
+
+summary(fit_limma2)
+tt_limma2 <- topTable(fit_limma2, coef = "tumourtumour",number = Inf)
+#tt_limma2
+
+#statistically significant miRNAs
+#Method 1: choose the k most significant genes 
+ord_sig_limma2 <- tt_limma2[order(tt_limma2$adj.P.Val),]
+
+#gives the 10 most significant miRNAs
+ord_sig_limma2[1:10,]
+
+
+
+```
+
+Plotting Limma
+
+```{r}
+
+cols <- ifelse(limma_data$tumour == "tumour", "purple", "black")
+
+#MDS plot
+plotMDS(limma_expr,
+        top = 500,
+        labels = limma_data$patient_id,
+        col = cols)
+legend("topright",
+       legend = c("normal", "tumour"),
+       col    = c("black", "purple"),
+       pch = 16, bty = "n")
+
+
+
+#MA plot for tumour effect (tumour - normal)
+limma::plotMA(fit_limma2,
+              coef = "tumourtumour",
+              main = "Average Expression vs LogFC (tumour - normal)")
+abline(h = 0, col = "violet")
+
+
+```
+
+```{r}
+library(pheatmap)
+
+topN <- 30
+top_ids <- rownames(tt_limma2)[order(tt_limma2$adj.P.Val)][1:topN]
+top_ids
+
+
+mat <- t(datExpr0[, top_ids, drop = FALSE])  # genes x samples
+
+ann_col <- data.frame(
+  condition  = limma_data$tumour,
+  patient_id = limma_data$patient_id
+)
+
+limma_data$tumour
+rownames(ann_col) <- rownames(limma_data)
+
+#align annotation rows to the SAMPLE columns of mat
+ann_col <- ann_col[colnames(mat), , drop = FALSE]
+
+pheatmap(mat,
+         scale = "row",
+         annotation_col = ann_col,
+         show_colnames = FALSE,
+         main = paste("Top", length(top_ids), "DE genes (limma)"))
+```
+
+```{r}
+#Volcano Plot
+
+tt_volc2 <- topTable(fit_limma2, coef = "tumourtumour",number = Inf)
+tt_volc2$negLog10FDR <- -log10(tt_volc2$adj.P.Val)
+
+#these parameters were chosen
+p_sig <- 0.05
+co_FC <- 1
+
+sig <- tt_volc2$adj.P.Val < p_sig & abs(tt_volc2$logFC) > co_FC
+
+plot(tt_volc2$logFC, tt_volc2$negLog10FDR,
+     pch=20,
+     xlab="log2 fold change (tumour / normal)",
+     ylab="-log10 FDR",
+     main="Volcano: tumour vs normal")
+
+abline(v=c(-1, 1), col="orange", lty=2)
+abline(h=-log10(0.05), col="orange", lty=2)
+
+points(tt_volc2$logFC[sig], tt_volc2$negLog10FDR[sig],
+       pch = 20, col = "purple")
+
+
+
+```
+
+Get parameters for paper
+
+```{r}
+tot_dim <- dim(tt_limma2)[1]
+tot_dim
+dim_sig <- dim(tt_limma2[tt_limma2$adj.P.Val < 0.05,])[1]
+
+tt_rel2 <- (tt_limma2[tt_limma2$adj.P.Val < 0.05 & abs(tt_limma2$logFC) >= 1,])
+
+dim_rel <- dim(tt_rel2)[1]
+
+dim_down <- dim(tt_rel2[tt_rel2$logFC<0,])[1]
+dim_up <- dim(tt_rel2[tt_rel2$logFC>0,])[1]
+
+frac <- dim_rel/tot_dim
+
+cat("fraction significant:", frac, "\n")
+cat("both conditions:", dim_rel, "\n")
+cat("down:", dim_down, "\n")
+cat("up:", dim_up, "\n")
+
+dim_down/dim_rel
+dim_up/dim_rel
+
+#head(tt_rel2)
+```
+
+COMPARING LIMMA AND PAIRED WGCNA (lw) ------------------------------------------
+
+Do the miRNAs deemed important by paired WGCNA and Limma overlap?
+
+```{r}
+#we are filtering out genes from the grey module, since those do not have a kWithin score
+#We can do this since the genes in the grey module are just the ones "left over"
+
+hubData2 <- hubData[hubData$module!= "grey",]
+
+
+#add new column to make extracting easier
+hubData2$MM_self <- as.numeric(hubData2[cbind(seq_len(nrow(hubData2)), match(paste0("MM", hubData2$module), names(hubData2)))])
+
+
+
+N_comp_lw <- c(200,150,100,50)
+for(i in 1:length(N_comp_lw)){
+  limma2_top <- rownames(ord_sig_limma2)[1:N_comp_lw[i]]
+
+  #WGCNA "importance" score = GS_i * |MM_i|
+  #GS = gene significance: how "phenotype associated" a miRNA is
+  #MM = module membership: how much a miRNA "belongs" to a module
+  
+  mm_col <- paste0("MM", hubData2$module)
+  #hubData$MM_self <- mapply(function(i, col) hubData[i, col], seq_len(nrow(hubData2)), mm_col)
+  
+  #hubData2$MM_self
+  
+  hubData2$wgcna_score <- hubData2$GS * abs(hubData2$MM_self)
+  
+
+  wgcna_top <- hubData2$gene[order(-hubData2$wgcna_score)][1:N_comp_lw[i]]
+  
+  cat("N =", N_comp_lw[i],"\n")
+  cat("Numer of overlapping miRNAs:",length(intersect(limma2_top, wgcna_top)))
+  #head(intersect(limma_top, wgcna_top), 20)
+  
+  
+  universe <- intersect(rownames(ord_sig_limma2), hubData2$gene)
+  
+  A <- length(intersect(limma2_top, wgcna_top))
+  B <- length(setdiff(wgcna_top, limma2_top))
+  C <- length(setdiff(limma2_top, wgcna_top))
+  D <- length(setdiff(universe, union(limma2_top, wgcna_top)))
+  
+  fish_comp_lw <- fisher.test(matrix(c(A,B,C,D), nrow=2), alternative="greater")
+  
+  print(fish_comp_lw)
+}
+
+```
+
+Limma camera: gene-set test for each module
+
+```{r}
+
+common_samp <- intersect(rownames(limma_data), rownames(datExpr_ok))
+design_cam <- model.matrix(~ patient_id + tumour, data = limma_data[common_samp, , drop = FALSE])
+
+expr_cam <- t(datExpr_ok[common_samp, , drop = FALSE])
+
+
+#module sets
+moduleColors_cam_limma <- setNames(hubData2$module, hubData2$gene)
+moduleColors_cam_limma <- moduleColors_cam_limma[names(moduleColors_cam_limma) %in% rownames(expr_cam)]
+moduleSets <- split(names(moduleColors_cam_limma), moduleColors_cam_limma)
+
+
+contrast_idx <- match("tumourtumour", colnames(design_cam))
+
+camera_res <- camera(expr_cam, 
+                     index = moduleSets,
+                     design = design_cam,
+                     contrast = contrast_idx)
+
+camera_res[order(camera_res$PValue), ]
+
+
+```
+
+Which modules contain the most miRNAs flagged by Limma? How likely is this result?
+
+```{r}
+library(dplyr)
+
+#map limma results onto gene names
+limma_map <- data.frame(
+  gene        = rownames(ord_sig_limma2),
+  limma_FDR   = ord_sig_limma2$adj.P.Val,
+  limma_P     = ord_sig_limma2$P.Value,
+  limma_t     = ord_sig_limma2$t,
+  limma_logFC = ord_sig_limma2$logFC,
+  row.names   = NULL
+)
+
+#universe: genes present in both limma + WGCNA (hubData2 already non-grey)
+universe <- intersect(limma_map$gene, hubData2$gene)
+
+#join and keep only universe genes
+comp <- hubData2 %>%
+  left_join(limma_map, by = "gene") %>%
+  filter(gene %in% universe) %>%
+  mutate(limma_sig = -log10(limma_FDR))
+
+#DE set from limma (FDR < 0.05 and |logFC| > 1)
+DE <- limma_map$gene[limma_map$limma_FDR < 0.05 & abs(limma_map$limma_logFC) >=1]
+DE <- intersect(DE, universe)
+
+length(DE)
+
+cat("DE genes (FDR<0.05):", length(DE), "\n")
+
+#enrichment per module (hypergeometric)
+moduleMembers <- split(comp$gene, comp$module)
+
+mod_enrich <- bind_rows(lapply(names(moduleMembers), function(m) {
+  genes <- intersect(moduleMembers[[m]], universe)
+  k <- length(intersect(genes, DE))        # DE inside module
+  M <- length(genes)                       # module size
+  U <- length(universe)                    # total tested
+  n <- length(DE)                          # total DE in universe
+  p <- phyper(k - 1, M, U - M, n, lower.tail = FALSE)
+
+  data.frame(module = m, module_size = M, DE_in_module = k,
+             frac_DE = k / M, p_value = p)
+})) %>%
+  mutate(FDR = p.adjust(p_value, "BH")) %>%
+  arrange(FDR, desc(frac_DE))
+
+mod_enrich
+
+
+cat("Universe size U =", length(universe), "\n")
+cat("DE size n =", length(DE), "\n")
+cat("DE fraction n/U =", length(DE)/length(universe), "\n")
+
+
+```
+
+Are the hubgenes more DE?
+
+```{r}
+
+cor_kWithin <- cor.test(comp$kWithin, comp$limma_sig,
+                       method = "spearman", use = "complete.obs")
+
+cor_MM <- cor.test(abs(comp$MM_self), comp$limma_sig,
+                   method = "spearman", use = "complete.obs")
+
+cor_score <- cor.test(comp$wgcna_score, comp$limma_sig,
+                      method = "spearman", use = "complete.obs")
+
+cor_kWithin
+cor_MM
+cor_score
+
+```
+
+NEW METHOD 3: DIFFCOEXP --------------------------------------------------------
+
+```{r}
+#library(dplyr)
+#library(diffcoexp)
+
+
+pheno_diff <- sample_traits[rownames(datExpr_ok), , drop = FALSE]
+pheno_diff$sample_id <- rownames(pheno_diff)   # <-- add this
+stopifnot(identical(rownames(pheno_diff), rownames(datExpr_ok)))
+
+pheno_diff$tumour <- factor(as.integer(pheno_diff$tumour), levels = c(0,1), labels = c("normal","tumour"))
+pheno_diff$patient_id <- as.character(pheno_diff$patient_id)
+
+
+
+expr2  <- datExpr_ok
+expr2 <- expr2[pheno_diff$sample_id, , drop = FALSE]
+stopifnot(identical(rownames(expr2), pheno_diff$sample_id))
+
+
+#filter genes for speed to enable speed
+nDiff <- 5000   # try 3000–8000 depending on machine
+vars  <- apply(expr2, 2, var, na.rm = TRUE)
+genes_keep <- names(sort(vars, decreasing = TRUE))[1:min(nDiff, ncol(expr2))]
+
+
+expr2 <- expr2[, genes_keep, drop = FALSE]
+tab <- with(pheno_diff, table(patient_id, tumour))
+print(tab)
+paired_pat <- rownames(tab)[rowSums(tab > 0) == 2]
+print(paired_pat)
+
+ph <- pheno_diff[pheno_diff$patient_id %in% paired_pat, , drop = FALSE]
+
+
+#now build matched sample lists
+pid <- sort(unique(ph$patient_id))
+
+
+sN <- ph$sample_id[ph$tumour == "normal"][match(pid, ph$patient_id[ph$tumour == "normal"])]
+sT <- ph$sample_id[ph$tumour == "tumour"][match(pid, ph$patient_id[ph$tumour == "tumour"])]
+
+
+#genes × patients (columns are paired patients in identical order)
+E_N <- t(expr2[sN, , drop = FALSE])
+E_T <- t(expr2[sT, , drop = FALSE])
+
+colnames(E_N) <- pid
+colnames(E_T) <- pid
+
+
+#run DiffCoExp
+#Spearman is slower than Pearson -> use pearson
+
+fn <- diffcoexp::diffcoexp
+avail <- names(formals(fn))
+
+params <- list(
+  r.method  = "pearson",
+  # The following are common in diffcoexp; will be ignored if not supported:
+  rth       = 0.4,
+  r.diffth  = 0.2,
+  qth       = 0.2,
+  q.diffth  = 0.2,
+  q.dcgth   = 0.2
+)
+
+params <- params[names(params) %in% avail]
+res <- do.call(fn, c(list(E_N, E_T), params))
+
+
+
+```
+
+Get parameters for paper
+
+```{r}
+
+
+cat("number of DCLs:", length(rownames(res$DCLs)),"\n")
+cat("number of DCGs:", length(rownames(res$DCGs)),"\n")
+
+cat("number of same signed DCLs:",length(res$DCL$type[res$DCL$type == "same signed"]), "\n")
+cat("number of diff signed DCLs:",length(res$DCL$type[res$DCL$type == "diff signed"]),"\n")
+cat("number of switched opposites DCLs:",length(res$DCL$type[res$DCL$type == "switched opposites"]),"\n")
+
+max(abs(res$DCLs$cor.diff))
+min(res$DCLs$q.diffcor)
+
+
+
+
+```
+
+COMPARISON DIFFCOEXP AND PAIRED WGCNA (pw) -------------------------------------
+
+“DCG-ness” (DCL degree) with WGCNA hubness (kWithin)
+
+```{r}
+dcl <- res$DCLs
+hubData2 <- hubData[hubData$module!= "grey",]
+
+genes_wgcna <- hubData2$gene
+dcl <- dcl[dcl$Gene.1 %in% genes_wgcna & dcl$Gene.2 %in% genes_wgcna, , drop = FALSE]
+
+
+dcg_degree_exp <- table(c(dcl$Gene.1, dcl$Gene.2))
+dcg_degree_exp <- dcg_degree_exp[names(dcg_degree_exp) %in% genes_wgcna]
+
+deg_df_exp <- data.frame(
+  gene = names(dcg_degree_exp),
+  dcl_degree = as.numeric(dcg_degree_exp),
+  row.names = NULL
+)
+
+comp_dcg_exp <- merge(hubData2[, c("gene","kWithin","module")], deg_df_exp, by = "gene")
+
+cor.test(comp_dcg_exp$kWithin, comp_dcg_exp$dcl_degree, method = "spearman")
+plot(comp_dcg_exp$kWithin, comp_dcg_exp$dcl_degree_exp, pch = 20,
+     xlab = "WGCNA kWithin", ylab = "DiffCoExp DCL degree",
+     main = "Are WGCNA hubs also DiffCoExp hubs?")
+```
+
+Overlap of top hubs
+
+```{r}
+topK <- 100
+
+common_genes <- intersect(hubData2$gene, names(dcg_degree_exp))
+
+#WGCNA hubs among genes that have DCL degree
+hubs_wgcna_common <- hubData2$gene[hubData2$gene %in% common_genes]
+hubs_wgcna_common <- hubs_wgcna_common[order(-hubData2$kWithin[match(hubs_wgcna_common, hubData2$gene)])]
+hubs_wgcna_common <- head(hubs_wgcna_common, topK)
+
+#diffCoExp hubs 
+hubs_diff_common <- names(sort(dcg_degree_exp[common_genes], decreasing = TRUE))[1:topK]
+
+length(intersect(hubs_wgcna_common, hubs_diff_common))
+head(intersect(hubs_wgcna_common, hubs_diff_common), 50)
+```
+
+Are DCLs mostly within the same WGCNA module?
+
+```{r}
+#gene -> module mapping
+mod <- setNames(hubData2$module, hubData2$gene)
+
+
+dcl$mod1 <- mod[dcl$Gene.1]
+dcl$mod2 <- mod[dcl$Gene.2]
+
+dcls2 <- subset(dcl, !is.na(mod1) & !is.na(mod2))
+
+within <- mean(dcls2$mod1 == dcls2$mod2)
+within
+table(dcls2$mod1 == dcls2$mod2)
+```
+
+Are DCLs “focused” on the "tumour" module?
+
+```{r}
+tumMod <- "green"
+
+#non-grey WGCNA genes
+universe_genes <- unique(hubData2$gene)     
+U <- length(universe_genes)
+
+m <- sum(hubData2$module == tumMod)
+
+n <- nrow(dcls2)
+obs_touch    <- sum(dcls2$mod1 == tumMod | dcls2$mod2 == tumMod)
+obs_internal <- sum(dcls2$mod1 == tumMod & dcls2$mod2 == tumMod)
+
+p_touch_exp    <- 1 - choose(U - m, 2) / choose(U, 2)
+p_internal_exp <- choose(m, 2) / choose(U, 2)
+
+#enrichment (module-size adjusted)
+enrich_touch    <- (obs_touch / n) / p_touch_exp
+enrich_internal <- (obs_internal / n) / p_internal_exp
+
+enrich_touch
+enrich_internal
+
+#significance vs module-size expectation
+binom.test(obs_touch,    n, p_touch_exp,    alternative = "greater")
+binom.test(obs_internal, n, p_internal_exp, alternative = "greater")
+
+```
+
+NEW METHOD 4: GLASSO -----------------------------------------------------------
+
+```{r}
+library(huge)
+
+#phenotype aligned to datExpr_ok
+
+pheno_graph <- sample_traits[rownames(datExpr_ok), , drop = FALSE]
+stopifnot(identical(rownames(pheno_graph), rownames(datExpr_ok)))
+
+pheno_graph$tumour <- factor(as.integer(pheno_graph$tumour),
+                            levels = c(0,1), labels = c("normal","tumour"))
+pheno_graph$patient_id <- as.character(pheno_graph$patient_id)
+
+expr_graph  <- datExpr_ok
+
+#Gene filtering for feasibility
+p_keep <- 500   # try 500–2000 first; 5000 is usually too big for glasso
+vars <- apply(expr_graph, 2, var, na.rm = TRUE)
+genes_keep <- names(sort(vars, decreasing = TRUE))[1:min(p_keep, ncol(expr_graph))]
+
+
+#split samples by condition
+sN <- rownames(pheno_graph)[pheno_graph$tumour == "normal"]
+sT <- rownames(pheno_graph)[pheno_graph$tumour == "tumour"]
+
+X_N <- as.matrix(expr_graph[sN, genes_keep, drop = FALSE])  # samples x genes
+X_T <- as.matrix(expr_graph[sT, genes_keep, drop = FALSE])
+
+
+X_N <- scale(X_N)
+X_T <- scale(X_T)
+
+#fit sparse networks + StARS select lambda
+nl <- 10  
+fitN <- huge(X_N, method = "glasso", nlambda = nl)
+selN <- huge.select(fitN, criterion = "stars")
+ThetaN <- selN$opt.icov
+
+fitT <- huge(X_T, method = "glasso", nlambda = nl)
+selT <- huge.select(fitT, criterion = "stars")
+ThetaT <- selT$opt.icov
+
+#keep names for downstream comparisons
+dimnames(ThetaN) <- list(genes_keep, genes_keep)
+dimnames(ThetaT) <- list(genes_keep, genes_keep)
+
+#adjacency (nonzero off-diagonal entries)
+AdjN <- (abs(ThetaN) > 0) * 1; diag(AdjN) <- 0
+AdjT <- (abs(ThetaT) > 0) * 1; diag(AdjT) <- 0
+
+```
+
+Parameters for paper
+
+```{r}
+
+prec_to_pcor <- function(Theta) {
+  D <- sqrt(diag(Theta))
+  P <- -Theta / (D %o% D)
+  diag(P) <- 1
+  P
+}
+
+network_summary <- function(Theta, eps = 1e-8) {
+  p <- ncol(Theta)
+  Adj <- (abs(Theta) > eps) * 1
+  diag(Adj) <- 0
+  E <- sum(Adj) / 2
+  density <- E / (p * (p - 1) / 2)
+  list(p = p, E = E, density = density, Adj = Adj)
+}
+
+sumN <- network_summary(ThetaN)
+sumT <- network_summary(ThetaT)
+
+cat("Normal edges:", sumN$E, " density:", round(sumN$density, 4), "\n")
+cat("Tumour edges:", sumT$E, " density:", round(sumT$density, 4), "\n")
+
+#gained/lost edges (tumour vs normal)
+AdjN <- sumN$Adj
+AdjT <- sumT$Adj
+genes <- colnames(X_N)   
+
+rownames(AdjN) <- colnames(AdjN) <- genes
+rownames(AdjT) <- colnames(AdjT) <- genes
+
+gain_idx <- which(AdjT == 1 & AdjN == 0, arr.ind = TRUE)
+loss_idx <- which(AdjT == 0 & AdjN == 1, arr.ind = TRUE)
+
+#keep upper triangle only
+gain_idx <- gain_idx[gain_idx[,1] < gain_idx[,2], , drop = FALSE]
+loss_idx <- loss_idx[loss_idx[,1] < loss_idx[,2], , drop = FALSE]
+
+gain_edges <- tibble(
+  miRNA1 = rownames(AdjT)[gain_idx[,1]],
+  miRNA2 = colnames(AdjT)[gain_idx[,2]],
+  change = "gained_in_tumour"
+)
+
+
+loss_edges <- tibble(
+  miRNA1 = rownames(AdjN)[loss_idx[,1]],
+  miRNA2 = colnames(AdjN)[loss_idx[,2]],
+  change = "lost_in_tumour"
+)
+
+cat("Gained in tumour:", nrow(gain_edges), "\n")
+cat("Lost in tumour:", nrow(loss_edges), "\n")
+
+
+#hubness: degree and strength 
+#degree = number of non-zero neighbours
+degN <- rowSums(AdjN)
+degT <- rowSums(AdjT)
+
+#strength = sum of abs(partial correlations) over neighbours
+PcorN <- prec_to_pcor(ThetaN)
+PcorT <- prec_to_pcor(ThetaT)
+rownames(PcorN) <- colnames(PcorN) <- genes
+rownames(PcorT) <- colnames(PcorT) <- genes
+
+strengthN <- rowSums(abs(PcorN) * AdjN)   
+strengthT <- rowSums(abs(PcorT) * AdjT)
+
+hub_df <- tibble(
+  miRNA = genes,
+  degree_normal = degN,
+  degree_tumour = degT,
+  strength_normal = strengthN,
+  strength_tumour = strengthT,
+  degree_delta = degT - degN,
+  strength_delta = strengthT - strengthN
+)
+
+#top hubs in each condition
+top_n <- 10
+
+top_deg_normal <- hub_df %>% arrange(desc(degree_normal)) %>% slice_head(n = top_n)
+top_deg_tumour <- hub_df %>% arrange(desc(degree_tumour)) %>% slice_head(n = top_n)
+
+top_str_normal <- hub_df %>% arrange(desc(strength_normal)) %>% slice_head(n = top_n)
+top_str_tumour <- hub_df %>% arrange(desc(strength_tumour)) %>% slice_head(n = top_n)
+
+#hubs that increase most in tumour
+top_degree_gain <- hub_df %>% arrange(desc(degree_delta)) %>% slice_head(n = top_n)
+top_strength_gain <- hub_df %>% arrange(desc(strength_delta)) %>% slice_head(n = top_n)
+
+head(top_deg_normal)
+head(top_deg_tumour)
+head(top_degree_gain)
+
+
+
+```
+
+COMPARISON GLASSO AND PAIRED DATA ----------------------------------------------
+
+Do glasso edges fall inside wgcna modules?
+
+```{r}
+#WGCNA gene -> module
+#take out grey module
+moduleColors_wgcna <- moduleColors[moduleColors != "grey"]
+
+
+#features used in glasso
+featN <- colnames(X_N)
+featT <- colnames(X_T)
+
+dimnames(ThetaN) <- list(featN, featN)
+dimnames(ThetaT) <- list(featT, featT)
+
+#compare only genes present in BOTH WGCNA modules and both glasso fits
+genes_wgcna <- names(moduleColors_wgcna)
+common_glasso <- Reduce(intersect, list(genes_wgcna, featN, featT))
+length(common_glasso)
+
+#named vector gene -> module
+mod2 <- moduleColors_wgcna[common_glasso]  
+
+edge_frac_within <- function(Theta, mod2, common) {
+  Theta <- Theta[common, common, drop = FALSE]
+  A <- abs(Theta) > 0
+  diag(A) <- FALSE
+  idx <- which(A & upper.tri(A), arr.ind = TRUE)
+  if (nrow(idx) == 0) return(NA_real_)
+
+  m1 <- mod2[rownames(Theta)[idx[,1]]]
+  m2 <- mod2[colnames(Theta)[idx[,2]]]
+  mean(m1 == m2, na.rm = TRUE)
+}
+
+f_within_N <- edge_frac_within(ThetaN, mod2, common_glasso)
+f_within_T <- edge_frac_within(ThetaT, mod2, common_glasso)
+
+c(within_edge_fraction_normal = f_within_N,
+  within_edge_fraction_tumour = f_within_T)
+
+#expected within-module fraction under random edges given module sizes
+n <- length(mod2)
+expected_within <- sum(sapply(split(mod2, mod2), function(x) choose(length(x), 2))) / choose(n, 2)
+
+expected_within
+
+enrich_normal <- f_within_N / expected_within
+enrich_tumour <- f_within_T / expected_within
+c(enrich_normal = enrich_normal, enrich_tumour = enrich_tumour)
+
+```
+
+```{r}
+#WGCNA gene -> module (reference partition)
+moduleColors_wgcna <- moduleColors[moduleColors !=0]
+
+
+#common genes used in both glasso fits and present in WGCNA, just to be safe
+featN <- rownames(ThetaN)
+featT <- rownames(ThetaT)
+common_glasso <- Reduce(intersect, list(names(moduleColors_wgcna), featN, featT))
+
+#module labels in the SAME order as common_glasso
+mod_glasso <- moduleColors_wgcna[common_glasso]
+stopifnot(identical(names(mod_glasso), common_glasso))
+
+count_edges_between_modules <- function(Theta, mod_glasso, common_glasso) {
+  Theta <- Theta[common_glasso, common_glasso, drop = FALSE]
+  A <- abs(Theta) > 0
+  diag(A) <- FALSE
+
+  idx <- which(A & upper.tri(A), arr.ind = TRUE)
+  if (nrow(idx) == 0) return(matrix(0, 0, 0))
+
+  g1 <- rownames(Theta)[idx[,1]]
+  g2 <- colnames(Theta)[idx[,2]]
+
+  m1 <- mod_glasso[g1]
+  m2 <- mod_glasso[g2]
+
+  tab <- table(pmin(m1, m2), pmax(m1, m2))
+  tab
+}
+
+tabN <- count_edges_between_modules(ThetaN, mod_glasso, common_glasso)
+tabT <- count_edges_between_modules(ThetaT, mod_glasso, common_glasso)
+
+tabN
+tabT
+
+#difference table
+mods <- sort(unique(c(rownames(tabN), colnames(tabN), rownames(tabT), colnames(tabT))))
+
+make_square <- function(tab, mods) {
+  out <- matrix(0L, nrow = length(mods), ncol = length(mods),
+                dimnames = list(mods, mods))
+  if (length(tab) > 0) {
+    out[rownames(tab), colnames(tab)] <- tab
+  }
+  out
+}
+
+Nmat <- make_square(tabN, mods)
+Tmat <- make_square(tabT, mods)
+
+diff_mat <- Tmat - Nmat
+
+sum(diff_mat)
+```

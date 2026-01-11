@@ -1,0 +1,1242 @@
+---
+title: "ReproducingWGCNA_exactly"
+format: 
+  html:
+    code-fold: false
+editor: visual
+execute:
+  echo: true
+  warning: true
+  message: true
+  error: true
+---
+
+This file includes methods:
+(i) WGCNA on paired data
+(vi) Limma
+(vii) DiffCoExp
+(viii) Glasso
+
+```{r, message=FALSE}
+# Setup ----
+library(GEOquery)
+library(limma)
+library(WGCNA)
+library(iCheck)
+library(nlme)
+library(dplyr)
+library(tidyr)
+
+options(stringsAsFactors = FALSE)
+allowWGCNAThreads()
+
+
+```
+
+```{r}
+# Load data ----
+gse   <- getGEO("GSE45238", GSEMatrix = TRUE)
+eset  <- gse[[1]]
+
+expr  <- exprs(eset)        # probes (858) × samples (80 = 2x40)
+pheno <- pData(eset)        # sample annotations -> gender etc. (80 x 38)
+annot <- fData(eset)        # probe / miRNA annotation (858 x 24)
+
+# Make sure sample annotation rows match expression columns
+rownames(pheno) <- pheno$geo_accession
+
+
+```
+
+```{r}
+# Probe filtering (Target Mature Version 12 & remove controls) ----
+colnames(annot)
+unique(annot$miRNA_version)
+
+is_mature_v12 <- annot$TargetMatureVersion == 12
+# TargetMatureVersion tells which version of that miRNA target library the probe’s annotation is based on -> lose 28 miRNA
+
+is_control <- grepl("control|spike|U6|snoR",
+                    annot$SYMBOL, ignore.case = TRUE)
+# To identify control miRNA to remove (actually none)
+
+keep_probes <- is_mature_v12 & !is_control
+
+expr  <- expr[keep_probes, ]
+annot <- annot[keep_probes, ]
+
+dim(expr)
+head(annot)
+
+
+
+```
+
+```{r}
+
+# Normalization ----
+
+# needed as 
+#> summary(as.numeric(expr))
+#    Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+#   26.27    50.04   128.60  1653.56   661.65 32331.24 
+
+
+expr_log2 <- log2(expr + 1)
+expr_norm <- normalizeBetweenArrays(expr_log2, method = "quantile")
+
+rownames(expr_norm) <- rownames(expr)
+colnames(expr_norm) <- colnames(expr)
+
+
+```
+
+```{r}
+
+# QC: PCA & sample clustering ----
+# QC: PCA & sample clustering ----
+# Make room on the right side for the legend
+op <- par(mar = c(5, 4, 4, 10), xpd = TRUE)  # bigger right margin + allow drawing outside
+
+expr_t <- t(expr_norm)  # samples × miRNAs
+pca <- prcomp(expr_t, scale. = TRUE)
+
+sample_ids    <- colnames(expr_norm)
+highlight_ids <- c("GSM1099641", "GSM1099655")
+point_col     <- ifelse(sample_ids %in% highlight_ids, "red", "black")
+
+plot(pca$x[,1], pca$x[,2],
+     xlab = "PC1", ylab = "PC2",
+     pch = 19,
+     col = point_col,
+     main = "PCA after normalization")
+
+text(pca$x[,1], pca$x[,2], # Plots the names of the sample_ids
+     labels = sample_ids,
+     pos = 3, cex = 0.6,
+     col = point_col)
+
+# Legend outside (to the right)
+legend("topright",
+       inset = c(-0.55, 0),   # move it outside into the right margin
+       legend = c("Other samples", "Outliers (to remove)"),
+       col    = c("black", "red"),
+       pch    = 19,
+       bty    = "n")
+
+# (Optional) reset par
+par(op)
+
+sampleTree <- hclust(dist(expr_t), method = "average")
+plot(sampleTree, labels = colnames(expr_norm), cex = 0.6,
+     main = "Sample clustering")
+abline(h = 35, col = "red")
+
+pdf("SampleClustering.pdf", width = 14, height = 10)
+plot(sampleTree,
+     labels = colnames(expr_norm),
+     cex = 0.6,
+     main = "Sample clustering dendrogram")
+abline(h = 35, col = "red")
+dev.off()
+
+
+```
+
+```{r}
+# Create patient IDs & remove outlier pairs ----
+
+# Extract patient ID from title, e.g. "non-OSCC_01N" -> "01"
+pheno$patient_id <- sub(".*_(\\d+)[NT]$", "\\1", pheno$title)
+pheno$patient_id <- as.character(pheno$patient_id)
+
+# Outlier control samples (from dendrogram)
+outlier_samples <- c("GSM1099641", "GSM1099655")
+
+# Patients corresponding to those outliers
+outlier_patient_ids <- unique(pheno$patient_id[
+  pheno$geo_accession %in% outlier_samples
+])
+
+# Remove ALL samples (normal + tumor) for those patients
+keep_samples <- !pheno$patient_id %in% outlier_patient_ids
+
+expr_norm <- expr_norm[, keep_samples]
+pheno     <- pheno[keep_samples, ]
+
+
+
+
+
+```
+
+Preprocessing done, we now start with the new method!
+
+```{r}
+
+# -------------------------------
+# Li et al. pipeline: WGCNA on all samples (no Δ) ----
+# -------------------------------
+
+# Define condition from title suffix (as done before)
+pheno$condition <- ifelse(grepl("T$", pheno$title), "tumor", "normal")
+
+# WGCNA expression data:
+# rows = samples (arrays), columns = miRNAs
+datExpr <- t(expr_norm)   # 76 samples × 830 miRNAs
+
+dim(datExpr)  # 76 x 830
+
+# Check for bad samples/genes
+gsg <- goodSamplesGenes(datExpr, verbose = 3)
+gsg$allOK  # TRUE
+
+
+```
+
+```{r}
+
+# Soft-threshold power selection (unsigned, as in Li et al.) ----
+powers <- 1:20
+sft <- pickSoftThreshold(datExpr,
+                         powerVector = powers,
+                         networkType = "unsigned",
+                         verbose = 5)
+
+par(mfrow = c(1,2))
+plot(sft$fitIndices[,1],
+     -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     xlab = "Soft Threshold (power)",
+     ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n",
+     main = "Scale independence")
+text(sft$fitIndices[,1],
+     -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     labels = powers, cex = 0.8, col = "red")
+abline(h = 0.97, col = "red")
+
+plot(sft$fitIndices[,1],
+     sft$fitIndices[,5],
+     xlab = "Soft Threshold (power)",
+     ylab = "Mean Connectivity",
+     type = "n",
+     main = "Mean connectivity")
+text(sft$fitIndices[,1],
+     sft$fitIndices[,5],
+     labels = powers, cex = 0.8, col = "red")
+
+# Li et al. chose β = 7 as first peak in R^2 (≈0.98)
+softPower <- 7
+softPower
+
+
+```
+
+```{r}
+# Build adjacency, TOM, and cluster miRNAs (unsigned) ----
+adjacency <- adjacency(datExpr,
+                       power = softPower,
+                       type  = "unsigned")
+
+TOM     <- TOMsimilarity(adjacency, TOMType = "unsigned")
+dissTOM <- 1 - TOM
+
+geneTree <- hclust(as.dist(dissTOM), method = "average")
+
+plot(geneTree,
+     main = "Clustering of miRNAs based on TOM (unsigned, Li pipeline)",
+     xlab = "", sub = "", cex = 0.4)
+
+
+```
+
+```{r}
+# Dynamic tree cut: detect modules ----
+minModuleSize <- 30
+
+dynamicMods <- cutreeDynamic(
+  dendro = geneTree,
+  distM = dissTOM,
+  deepSplit = 2,
+  pamRespectsDendro = FALSE,
+  minClusterSize = minModuleSize
+)
+
+dynamicColors <- labels2colors(dynamicMods)
+table(dynamicColors)
+
+plotDendroAndColors(
+  geneTree,
+  dynamicColors,
+  "Dynamic Tree Cut",
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05,
+  main = "miRNA dendrogram and module colors (Li pipeline)"
+)
+
+# Module eigengenes + merging ----
+moduleColors0 <- dynamicColors
+
+
+MElist <- moduleEigengenes(datExpr, colors = moduleColors0)
+MEs    <- orderMEs(MElist$eigengenes)
+
+# Eigengene clustering
+MEDiss <- 1 - cor(MEs)
+METree <- hclust(as.dist(MEDiss), method = "average")
+
+mergeCutHeight <- 0.25  # standard WGCNA choice
+
+plot(METree,
+     main = "Clustering of module eigengenes (before merging)",
+     xlab = "", sub = "")
+abline(h = mergeCutHeight, col = "red")
+# Actually the merging will do nothing as the modules are far apart
+
+# Merge similar modules
+merge <- mergeCloseModules(
+  datExpr,
+  moduleColors0,
+  cutHeight = mergeCutHeight,
+  verbose = 3
+)
+
+moduleColors <- merge$colors
+MEs          <- orderMEs(merge$newMEs)
+
+plotDendroAndColors(
+  geneTree,
+  cbind(moduleColors0, moduleColors),
+  c("Dynamic Tree Cut", "Merged modules"),
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05,
+  main = "Modules before and after merging"
+)
+
+
+moduleColors_wgcna <- data.frame(
+  miRNA        = colnames(datExpr),
+  moduleColor  = moduleColors
+)
+
+
+
+```
+
+```{r}
+
+# Sample-level traits for LMM (Li et al.) ----
+# We already have pheno$patient_id and pheno$condition
+
+# Make sure rownames(pheno) are sample IDs and match datExpr rows
+stopifnot(identical(rownames(pheno), rownames(datExpr)))
+
+# Numeric tumour indicator: 0 = normal, 1 = tumour
+pheno$tumour <- ifelse(pheno$condition == "tumor", 1, 0)
+
+# Age and stage (same for both samples of a patient)
+pheno$Age <- as.numeric(pheno[,"age:ch1"])
+
+pheno$Stage_num <- as.numeric(factor(pheno[,"Stage:ch1"],
+                                     levels = c("I","II","III","IVA")))
+
+# Keep only the columns we need and align with datExpr
+sampleTraits <- pheno[, c("patient_id", "tumour", "Age", "Stage_num")]
+rownames(sampleTraits) <- rownames(pheno)
+
+# Check alignment
+identical(rownames(sampleTraits), rownames(datExpr))
+
+
+```
+
+```{r}
+
+
+# Data for LMM: traits + eigengenes
+datLMM <- cbind(sampleTraits[rownames(MEs), ],
+                as.data.frame(MEs))
+
+head(datLMM)
+
+modNames <- colnames(MEs)
+
+lmm_results <- lapply(modNames, function(mn) {
+  form <- as.formula(paste(mn, "~ tumour + Age + Stage_num"))
+  
+  fit  <- lme(form,
+              random = ~ 1 | patient_id,
+              data   = datLMM,
+              na.action = na.omit,
+              method = "REML")
+  
+  sm <- summary(fit)
+  tumour_row <- sm$tTable["tumour", ]  # fixed effect for tumour status
+  
+  data.frame(
+    module     = mn,
+    beta_tumour = tumour_row["Value"],
+    t_tumour   = tumour_row["t-value"],
+    p_tumour   = tumour_row["p-value"],
+    row.names  = NULL
+  )
+})
+
+lmm_results_df <- do.call(rbind, lmm_results)
+lmm_results_df[order(lmm_results_df$p_tumour), ]
+
+
+```
+
+```{r}
+# Simple heatmap of t-values for tumour effect ----
+lmm_results_df$module_clean <- substring(lmm_results_df$module, 3)
+tmat <- matrix(lmm_results_df$t_tumour,
+               nrow = nrow(lmm_results_df),
+               dimnames = list(lmm_results_df$module_clean, "Tumour (t)"))
+
+pheatmap::pheatmap(tmat,
+                   main = "Module–tumour associations (LMM t-values)",
+                   cluster_rows = FALSE,
+                   cluster_cols = FALSE,
+                   display_numbers = round(tmat, 2))
+
+lmm_results_df
+
+```
+
+```{r}
+# Gene significance (GS) based on LMM per miRNA ----
+expr_forGS <- datExpr  # samples × miRNAs
+
+datGS <- cbind(sampleTraits[rownames(expr_forGS), ],
+               as.data.frame(expr_forGS))
+
+miRNAs <- colnames(expr_forGS)
+
+gs_list <- lapply(miRNAs, function(g) {
+  form <- as.formula(paste(g, "~ tumour + Age + Stage_num"))
+  fit  <- lme(form,
+              random = ~ 1 | patient_id,
+              data   = datGS,
+              na.action = na.omit,
+              method = "REML")
+  sm <- summary(fit)
+  t_tumour <- sm$tTable["tumour","t-value"]
+  data.frame(miRNA = g, GS = abs(t_tumour), row.names = NULL)
+})
+
+geneGS <- do.call(rbind, gs_list)
+rownames(geneGS) <- geneGS$miRNA
+
+
+```
+
+```{r}
+# Module membership (MM) ----
+# Drop the "ME" prefix so we get clean module names
+modNames <- substring(colnames(MEs), 3)  # "MEturquoise" -> "turquoise"
+
+geneModuleMembership <- as.data.frame(cor(datExpr, MEs, use = "p"))
+colnames(geneModuleMembership) <- paste0("MM", modNames)
+rownames(geneModuleMembership) <- colnames(datExpr)  # miRNA names
+
+
+# Put everything together
+hubData <- data.frame(
+  miRNA  = colnames(datExpr),
+  module = moduleColors,
+  geneModuleMembership,
+  GS     = geneGS[colnames(datExpr), "GS"],
+  row.names = NULL
+)
+```
+
+```{r}
+# Intramodular connectivity & hub miRNAs ----
+IMConn <- intramodularConnectivity(adjacency, moduleColors)
+IMConn_df <- as.data.frame(IMConn)
+IMConn_df$miRNA <- rownames(IMConn_df)
+
+# Add kWithin into hubData
+hubData <- hubData %>%
+  left_join(IMConn_df[, c("miRNA", "kWithin")], by = "miRNA")
+
+# Top 10 hubs per module (by kWithin)
+hubList <- hubData %>%
+  group_by(module) %>%
+  arrange(desc(kWithin)) %>%
+  slice_head(n = 10) %>%
+  ungroup()
+
+hubList
+
+
+```
+
+```{r}
+# Example: GS vs MM for the turquoise module
+targetModule <- "turquoise"
+inMod <- hubData$module == targetModule
+plot(hubData$MMturquoise[inMod],
+     hubData$GS[inMod],
+     xlab = "Module membership (turquoise)",
+     ylab = "Gene significance (|t| for tumour)",
+     main = paste("GS vs MM in", targetModule, "module"))
+abline(lm(GS ~ MMturquoise, data = hubData[inMod, ]), lty = 2)
+
+```
+
+The closer the absolute value of the x-coordinate (MMturquoise) is to 1, the more strongly that miRNA belongs to the turquoise module. -\> looks great used an unsigned network, so it’s totally normal to have lots of negative MM values.
+
+Unsigned used, thus: -\> Adjacency uses \|correlation\| between miRNAs. -\> That means miRNAs that are strongly negatively correlated can still be tightly connected and end up in the same module.
+
+```{r}
+
+# Export module miRNA lists ----
+moduleGenes <- split(hubData$miRNA, hubData$module)
+
+for (mod in names(moduleGenes)) {
+  write.table(moduleGenes[[mod]],
+              file = paste0("module_", mod, "_miRNAs.txt"),
+              row.names = FALSE,
+              col.names = FALSE,
+              quote = FALSE)
+}
+
+# Export top 10 hubs per module ----
+for (mod in unique(hubList$module)) {
+  sub <- hubList[hubList$module == mod, ]
+  write.table(sub,
+              file = paste0("module_", mod, "_top10_hubs.txt"),
+              row.names = FALSE,
+              quote = FALSE,
+              sep = "\t")
+}
+
+```
+
+table(moduleColors) moduleColors blue brown grey turquoise 201 85 250 294
+
+NEW METHOD 1: LIMMA ------------------------------------------------------------
+
+```{r}
+#Define condition from title suffix
+pheno$condition <- ifelse(grepl("T$", pheno$title), "tumor", "normal")
+
+#Check that each remaining patient has both N & T
+table(pheno$patient_id, pheno$condition)
+
+patient_ids <- sort(unique(pheno$patient_id))
+
+#set up factors
+pheno$condition  <- factor(pheno$condition, levels = c("normal", "tumor"))
+pheno$patient_id <- factor(pheno$patient_id)
+
+
+design <- model.matrix(~ patient_id + condition, data = pheno)
+colnames(design)
+
+#run Limma
+fit  <- lmFit(expr_norm, design)
+fit  <- eBayes(fit)
+
+tt <- topTable(fit, coef = "conditiontumor", number = Inf)
+
+#statistically significant miRNAs
+#Method 1: choose the k most significant genes 
+ord_sig <- tt[order(tt$adj.P.Val),]
+
+ord_sig[1:10,] #gives the 10 most significant miRNAs
+
+#Method 2: choose based on threshold
+
+#co_FC <- 1
+#sig_miRNA <- tt[tt$adj.P.Val< 0.05 & abs(tt$logFC) > co_FC,]
+#n_sig <- dim(sig_miRNA)[1]
+#n_tot <- dim(tt)[1]
+
+
+
+dim(tt[tt$adj.P.Val < 0.05,])
+tt_rel <- (tt[tt$adj.P.Val < 0.05 & abs(tt$logFC)  >= 1,])
+
+dim(tt_rel)[1]
+dim(tt_rel[tt_rel$logFC<0,])[1]
+dim(tt_rel[tt_rel$logFC>0,])[1]
+
+head(tt_rel)
+
+```
+
+Plotting Limma
+
+```{r}
+
+
+pheno <- pheno[colnames(expr_norm), ]
+stopifnot(identical(rownames(pheno), colnames(expr_norm)))
+
+cols <- ifelse(pheno$condition == "tumor", "purple", "black")
+
+
+plotMDS(expr_norm, 
+        top = 500, 
+        labels = pheno$patient_id, 
+        col = cols)
+legend("topright", 
+       legend=c("normal","tumor"), 
+       col=c("black","purple"), 
+       pch=16, bty="n")
+
+plotMA(fit, 
+       coef = "conditiontumor", 
+       main="Average Expression vs LogFC")
+abline(h = 0, col = "violet")
+#gives two distinct clouds, separation along the the first dimension
+
+
+
+
+
+```
+
+```{r}
+
+# Volcano Plot
+
+tt_volc <- topTable(fit, coef="conditiontumor", number=Inf)
+tt_volc$negLog10FDR <- -log10(tt$adj.P.Val)
+
+#these parameters were chosen
+p_sig <- 0.05
+co_FC <- 1
+
+sig <- tt_volc$adj.P.Val < p_sig & abs(tt_volc$logFC) > co_FC
+
+
+plot(tt_volc$logFC, tt_volc$negLog10FDR,
+     pch = 20,
+     col = "grey70",
+     xlab = "log2 fold change (tumour / normal)",
+     ylab = "-log10 FDR",
+     main = "Volcano: tumour vs normal")
+
+abline(v = c(-1, 1), col = "orange", lty = 2)
+abline(h = -log10(0.05), col = "orange", lty = 2)
+
+points(tt_volc$logFC[sig], tt_volc$negLog10FDR[sig],
+       pch = 20, col = "purple")
+
+#label top 10 by FDR
+top <- head(order(tt_volc$adj.P.Val), 10)
+text(tt_volc$logFC[top], tt_volc$negLog10FDR[top], labels=rownames(tt_volc)[top], cex=0.7, pos=3)
+
+#Shows us the logFC plotted against statistical significance
+
+```
+
+```{r}
+#Heatmap for top DE miRNAs
+
+library(pheatmap)
+
+topN <- 30
+top_ids <- rownames(tt)[order(tt$adj.P.Val)][1:topN]
+mat <- expr_norm[top_ids, ]
+
+ann <- data.frame(
+  condition  = pheno$condition,
+  patient_id = pheno$patient_id
+)
+rownames(ann) <- rownames(pheno)
+
+pheatmap(mat,
+         scale = "row",
+         annotation_col = ann,
+         show_colnames = FALSE,
+         main = paste("Top", topN, "DE miRNAs (limma)"))
+```
+
+COMPARING LIMMA AND PAIRED WGCNA (lw) ------------------------------------------
+
+Do the miRNAs deemed important by paired WGCNA and Limma overlap?
+
+```{r}
+N_comp_lw <- c(200,150,100,50)
+for(i in 1:length(N_comp_lw)){
+  limma_top <- rownames(ord_sig)[1:N_comp_lw[i]]
+
+  #WGCNA "importance" score = GS_i * |MM_i|
+  #GS = gene significance: how "phenotype associated" a miRNA is
+  #MM = module membership: how much a miRNA "belongs" to a module
+  
+  mm_col <- paste0("MM", hubData$module)
+  hubData$MM_self <- mapply(function(i, col) hubData[i, col], seq_len(nrow(hubData)), mm_col)
+  
+  hubData$wgcna_score <- hubData$GS * abs(hubData$MM_self)
+  
+  wgcna_top <- hubData$miRNA[order(-hubData$wgcna_score)][1:N_comp_lw[i]]
+  
+  cat("N =", N_comp_lw[i],"\n")
+  cat("Numer of overlapping miRNAs:",length(intersect(limma_top, wgcna_top)))
+  #head(intersect(limma_top, wgcna_top), 20)
+  
+  #failsafe in case the two lists were different lengths
+  universe <- intersect(rownames(ord_sig), hubData$miRNA)
+  
+  A <- length(intersect(limma_top, wgcna_top))
+  B <- length(setdiff(wgcna_top, limma_top))
+  C <- length(setdiff(limma_top, wgcna_top))
+  D <- length(setdiff(universe, union(limma_top, wgcna_top)))
+  
+  fish_comp_lw <- fisher.test(matrix(c(A,B,C,D), nrow=2), alternative="greater")
+  
+  print(fish_comp_lw)
+}
+
+```
+
+Which modules contain the most miRNAs flagged by Limma? How likely is this result?
+
+```{r}
+limma_map <- data.frame(
+  miRNA      = rownames(ord_sig),
+  limma_FDR  = ord_sig$adj.P.Val,
+  limma_P    = ord_sig$P.Value,
+  limma_t    = ord_sig$t,
+  limma_logFC= ord_sig$logFC,
+  row.names  = NULL
+)
+
+comp <- hubData %>%
+  left_join(limma_map, by = "miRNA") %>%
+  filter(miRNA %in% universe) %>%
+  mutate(limma_sig = -log10(limma_FDR))
+DE <- rownames(ord_sig)[ord_sig$adj.P.Val < 0.05]
+
+cat("DE miRNAs (FDR<0.05):", length(DE), "\n")
+
+moduleMembers <- split(comp$miRNA, comp$module)
+
+mod_enrich <- bind_rows(lapply(names(moduleMembers), function(m) {
+  genes <- intersect(moduleMembers[[m]], universe)
+  k <- length(intersect(genes, DE))      # DE inside module
+  M <- length(genes)                     # module size
+  U <- length(universe)                  # total tested
+  n <- length(intersect(DE, universe))   # total DE
+  p <- phyper(k - 1, M, U - M, n, lower.tail = FALSE)
+
+  data.frame(module=m, module_size=M, DE_in_module=k, frac_DE=k/M, p_value=p)
+})) %>%
+  mutate(FDR = p.adjust(p_value, "BH")) %>%
+  arrange(FDR, desc(frac_DE))
+
+mod_enrich
+
+```
+
+Are the hubgenes more DE?
+
+```{r}
+
+#kWithin vs limma significance
+cor_kWithin <- cor.test(comp$kWithin, comp$limma_sig, method="spearman", use="complete.obs")
+
+# |MM_self| vs limma significance
+cor_MM <- cor.test(abs(comp$MM_self), comp$limma_sig, method="spearman", use="complete.obs")
+
+#combined score vs limma significance
+cor_score <- cor.test(comp$wgcna_score, comp$limma_sig, method="spearman", use="complete.obs")
+
+cor_kWithin
+cor_MM
+cor_score
+
+```
+
+
+
+NEW METHOD 3: DIFFCOEXP --------------------------------------------------------
+
+```{r, message=FALSE}
+pheno$condition <- ifelse(grepl("T$", pheno$title), "tumor", "normal")
+pheno$condition <- factor(pheno$condition, levels = c("normal","tumor"))
+
+datExpr <- t(expr_norm) 
+E_N_exp <- datExpr[pheno$condition == "normal", , drop = FALSE]
+E_T_exp <- datExpr[pheno$condition == "tumor",  , drop = FALSE]
+
+#for diffcoexp we need the two expression matrices to have the same row names, we will name them by their patient_ID
+
+E_N_exp <- E_N_exp[order(pheno$patient_id[pheno$condition=="normal"]), , drop=FALSE]
+rownames(E_N_exp) <- pheno$patient_id[pheno$condition=="normal"][order(pheno$patient_id[pheno$condition=="normal"])]
+
+E_T_exp <- E_T_exp[order(pheno$patient_id[pheno$condition=="tumor"]), , drop=FALSE]
+rownames(E_T_exp) <- pheno$patient_id[pheno$condition=="tumor"][order(pheno$patient_id[pheno$condition=="tumor"])]
+
+library(diffcoexp)
+
+res <- diffcoexp(t(E_N_exp), t(E_T_exp), r.method = "spearman" )
+
+#res calculates differentially coexpressed links (DCLs): gene pairs with significantly different
+#differentially: DCGs are genes with significantly more DCLs than by chance
+
+
+```
+
+Get parameters for paper
+
+```{r}
+print("Default parameters for diffcoexp:")
+args(diffcoexp::diffcoexp)
+
+cat("number of DCLs:", length(rownames(res$DCLs)),"\n")
+cat("number of DCGs:", length(rownames(res$DCGs)),"\n")
+
+cat("number of same signed DCLs:",length(res$DCL$type[res$DCL$type == "same signed"]), "\n")
+cat("number of diff signed DCLs:",length(res$DCL$type[res$DCL$type == "diff signed"]),"\n")
+cat("number of switched opposites DCLs:",length(res$DCL$type[res$DCL$type == "switched opposites"]),"\n")
+
+max(abs(res$DCLs$cor.diff))
+min(res$DCLs$q.diffcor)
+
+```
+
+COMPARING DIFFCOEXP TO PAIRED WGCNA (pw) ---------------------------------------
+
+How do the top candidates overlap?
+
+“DCG-ness” (DCL degree) with WGCNA hubness (kWithin)
+
+```{r}
+dcg_degree <- table(c(res$DCLs$Gene.1, res$DCLs$Gene.2))
+dcg_degree <- dcg_degree[names(dcg_degree) %in% hubData$miRNA]
+
+deg_df <- data.frame(miRNA = names(dcg_degree),
+                     dcl_degree = as.numeric(dcg_degree),
+                     row.names=NULL)
+
+comp_dcg <- merge(hubData[, c("miRNA","kWithin","module")], deg_df, by="miRNA")
+
+cor.test(comp_dcg$kWithin, comp_dcg$dcl_degree, method="spearman")
+plot(comp_dcg$kWithin, comp_dcg$dcl_degree, pch=20,
+     xlab="WGCNA kWithin", ylab="DiffCoExp DCL degree",
+     main="Are WGCNA hubs also DiffCoExp hubs?")
+
+
+```
+
+Overlap of top hubs
+
+```{r}
+topK <- 100
+hubs_wgcna <- hubData$miRNA[order(-hubData$kWithin)][1:topK]
+
+# DiffCoExp hubs = highest DCL degree
+hubs_diff <- names(sort(dcg_degree, decreasing=TRUE))[1:topK]
+
+
+
+length(intersect(hubs_wgcna, hubs_diff))
+intersect(hubs_wgcna, hubs_diff)
+
+
+```
+
+Are DCLs mostly within the same WGCNA module (or between modules)?
+
+```{r}
+dcl <- res$DCLs
+
+#module lookup: miRNA -> moduleColor
+
+mod <- setNames(moduleColors_wgcna$moduleColor, moduleColors_wgcna$miRNA)
+
+dcl$mod1 <- mod[dcl$Gene.1]
+dcl$mod2 <- mod[dcl$Gene.2]
+
+#drop pairs where a gene/miRNA wasnt found
+dcls2 <- subset(dcl, !is.na(mod1) & !is.na(mod2))
+
+#within-module vs between-module
+within <- mean(dcls2$mod1 == dcls2$mod2)
+within
+table(dcls2$mod1 == dcls2$mod2)
+
+
+```
+
+Are DCLs “focused” on the "tumour" module?
+
+```{r}
+tumMod <- "turquoise"
+
+# fraction of DCL edges that touch turquoise
+touch_turq <- mean(dcls2$mod1 == tumMod | dcls2$mod2 == tumMod)
+
+
+# fraction of DCL edges that are internal to turquoise
+internal_turq <- mean(dcls2$mod1 == tumMod & dcls2$mod2 == tumMod)
+
+
+#DCL edges that dont involve turquoise
+not_touch_turq_logical <- !(dcls2$mod1 == tumMod | dcls2$mod2 == tumMod)
+
+n_not_touch_turq <- sum(not_touch_turq_logical)
+frac_not_touch_turq <- mean(not_touch_turq_logical)
+
+cat("DCLs not involving turquoise:", n_not_touch_turq, "out of", nrow(dcls2),
+    sprintf("(%.1f%%)\n", 100*frac_not_touch_turq))
+
+```
+
+
+Are the pairs whose correlation changes also strongly connected in the overall WGCNA network?
+
+```{r}
+#prepare for comparison
+TOM_wgcna <- TOM
+
+# add dimnames so you can index by miRNA name
+miRNA_ids <- colnames(datExpr)
+stopifnot(length(miRNA_ids) == ncol(TOM_wgcna))
+
+dimnames(TOM_wgcna) <- list(miRNA_ids, miRNA_ids)
+
+
+#TOM weight for each DCL edge
+tom_dcl <- mapply(function(a, b) TOM_wgcna[a, b],
+                  dcls2_tom$Gene.1, dcls2_tom$Gene.2)
+
+
+
+# Compare to background distribution of TOM edges (all pairs)
+tom_all <- TOM_wgcna[upper.tri(TOM_wgcna)]
+
+
+#are DCL edges generally higher TOM than average?
+wilcox.test(tom_dcl, tom_all)  
+median(tom_dcl)
+median(tom_all)
+
+```
+
+NEW METHOD 4: GRAPHICAL LASSO --------------------------------------------------
+
+```{r, message=FALSE}
+library(huge)
+
+pheno_graph <- pheno
+pheno_graph <- pheno_graph[colnames(expr_norm), , drop = FALSE]
+
+#Split samples by condition
+E_N_graph <- rownames(pheno)[pheno$condition == "normal"]
+E_T_graph <- rownames(pheno)[pheno$condition == "tumor"]
+
+X_N_graph <- t(expr_norm[, E_N_graph, drop = FALSE])  
+X_T_graph <- t(expr_norm[, E_T_graph, drop = FALSE])
+
+#standardize features 
+X_N_graph <- scale(X_N_graph)
+X_T_graph <- scale(X_T_graph)
+
+#fit sparse networks with StARS to choose lambda
+
+fitN <- huge(X_N_graph, method = "glasso", nlambda = 10)
+selN <- huge.select(fitN, criterion = "stars")
+ThetaN <- selN$opt.icov  
+
+fitT <- huge(X_T_graph, method = "glasso", nlambda = 10)
+selT <- huge.select(fitT, criterion = "stars")
+ThetaT <- selT$opt.icov
+
+
+eps <- 1e-8
+ThetaN <- (ThetaN + t(ThetaN))/2; ThetaT <- (ThetaT + t(ThetaT))/2
+AdjN <- ((abs(ThetaN) > eps) + t(abs(ThetaN) > eps) > 0) * 1; diag(AdjN) <- 0
+AdjT <- ((abs(ThetaT) > eps) + t(abs(ThetaT) > eps) > 0) * 1; diag(AdjT) <- 0
+p <- ncol(AdjN); EN <- sum(AdjN[upper.tri(AdjN)]); ET <- sum(AdjT[upper.tri(AdjT)])
+
+```
+
+Parameters for paper
+
+```{r}
+
+prec_to_pcor <- function(Theta) {
+  D <- sqrt(diag(Theta))
+  P <- -Theta / (D %o% D)
+  diag(P) <- 1
+  P
+}
+
+network_summary <- function(Theta, eps = 1e-8) {
+  p <- ncol(Theta)
+  Adj <- (abs(Theta) > eps) * 1
+  diag(Adj) <- 0
+  E <- sum(Adj) / 2
+  density <- E / (p * (p - 1) / 2)
+  list(p = p, E = E, density = density, Adj = Adj)
+}
+
+sumN <- network_summary(ThetaN)
+sumT <- network_summary(ThetaT)
+
+cat("Normal edges:", sumN$E, " density:", round(sumN$density, 4), "\n")
+cat("Tumour edges:", sumT$E, " density:", round(sumT$density, 4), "\n")
+
+#gained/lost edges (tumour vs normal)
+AdjN <- sumN$Adj
+AdjT <- sumT$Adj
+genes <- colnames(X_N_graph)   
+
+rownames(AdjN) <- colnames(AdjN) <- genes
+rownames(AdjT) <- colnames(AdjT) <- genes
+
+gain_idx <- which(AdjT == 1 & AdjN == 0, arr.ind = TRUE)
+loss_idx <- which(AdjT == 0 & AdjN == 1, arr.ind = TRUE)
+
+#keep upper triangle only
+gain_idx <- gain_idx[gain_idx[,1] < gain_idx[,2], , drop = FALSE]
+loss_idx <- loss_idx[loss_idx[,1] < loss_idx[,2], , drop = FALSE]
+
+gain_edges <- tibble(
+  miRNA1 = rownames(AdjT)[gain_idx[,1]],
+  miRNA2 = colnames(AdjT)[gain_idx[,2]],
+  change = "gained_in_tumour"
+)
+
+loss_edges <- tibble(
+  miRNA1 = rownames(AdjN)[loss_idx[,1]],
+  miRNA2 = colnames(AdjN)[loss_idx[,2]],
+  change = "lost_in_tumour"
+)
+
+cat("Gained in tumour:", nrow(gain_edges), "\n")
+cat("Lost in tumour:", nrow(loss_edges), "\n")
+
+
+#hubness: degree and strength 
+#degree = number of non-zero neighbours
+degN <- rowSums(AdjN)
+degT <- rowSums(AdjT)
+
+#strength = sum of abs(partial correlations) over neighbours
+PcorN <- prec_to_pcor(ThetaN)
+PcorT <- prec_to_pcor(ThetaT)
+rownames(PcorN) <- colnames(PcorN) <- genes
+rownames(PcorT) <- colnames(PcorT) <- genes
+
+strengthN <- rowSums(abs(PcorN) * AdjN)   
+strengthT <- rowSums(abs(PcorT) * AdjT)
+
+hub_df <- tibble(
+  miRNA = genes,
+  degree_normal = degN,
+  degree_tumour = degT,
+  strength_normal = strengthN,
+  strength_tumour = strengthT,
+  degree_delta = degT - degN,
+  strength_delta = strengthT - strengthN
+)
+
+#top hubs 
+top_n <- 10
+
+top_deg_normal <- hub_df %>% arrange(desc(degree_normal)) %>% slice_head(n = top_n)
+top_deg_tumour <- hub_df %>% arrange(desc(degree_tumour)) %>% slice_head(n = top_n)
+
+top_str_normal <- hub_df %>% arrange(desc(strength_normal)) %>% slice_head(n = top_n)
+top_str_tumour <- hub_df %>% arrange(desc(strength_tumour)) %>% slice_head(n = top_n)
+
+#hubs that increase most in tumour
+top_degree_gain <- hub_df %>% arrange(desc(degree_delta)) %>% slice_head(n = top_n)
+top_strength_gain <- hub_df %>% arrange(desc(strength_delta)) %>% slice_head(n = top_n)
+
+head(top_deg_normal)
+head(top_deg_tumour)
+head(top_degree_gain)
+
+
+
+```
+
+COMPARING GLASSO AND PAIRED WGCNA (gw) -----------------------------------------
+
+Do Glasso edges fall inside WGCNA modules?
+
+```{r}
+
+#such that there is no variable confusion
+moduleColors_wgcna <- moduleColors
+TOM_wgcna <- TOM
+
+miRNA_ids <- colnames(datExpr)
+stopifnot(length(miRNA_ids) == nrow(TOM_wgcna))
+
+dimnames(TOM_wgcna) <- list(miRNA_ids, miRNA_ids)
+names(moduleColors_wgcna) <- miRNA_ids
+
+#correct dimnames 
+featN <- colnames(X_N_graph)
+featT <- colnames(X_T_graph)
+
+dimnames(ThetaN) <- list(featN, featN)
+dimnames(ThetaT) <- list(featT, featT)
+
+#common miRNAs between WGCNA and both glasso networks
+genes <- names(moduleColors_wgcna)
+common_glasso <- Reduce(intersect, list(genes, rownames(ThetaN), rownames(ThetaT)))
+cat("Common miRNAs used for comparison:", length(common_glasso), "\n")
+
+mod2 <- moduleColors_wgcna[common_glasso]  
+
+#count within-module edges and total edges in a glasso adjacency
+edge_within_counts <- function(Theta, mod, common) {
+  Theta <- Theta[common, common, drop = FALSE]
+  A <- abs(Theta) > eps
+  diag(A) <- FALSE
+  idx <- which(A & upper.tri(A), arr.ind = TRUE)
+  if (nrow(idx) == 0) return(list(m=0L, x=0L, frac=NA_real_))
+  within <- mod[idx[,1]] == mod[idx[,2]]
+  x <- sum(within)        
+  m <- length(within)     
+  list(m=m, x=x, frac=x/m)
+}
+
+#observed within fractions for normal/tumour glasso networks
+N_counts <- edge_within_counts(ThetaN, mod2, common_glasso)
+T_counts <- edge_within_counts(ThetaT, mod2, common_glasso)
+
+cat("Within-edge fraction (normal):", N_counts$frac, "\n")
+cat("Within-edge fraction (tumour):", T_counts$frac, "\n")
+
+
+n <- length(common_glasso)
+Npairs <- choose(n, 2)
+
+W <- sum(sapply(split(mod2, mod2), function(x) choose(length(x), 2))) 
+expected_within <- W / Npairs
+cat("Expected within-edge fraction under random pairs:", expected_within, "\n")
+
+
+p_enrich_N <- phyper(N_counts$x - 1, W, Npairs - W, N_counts$m, lower.tail = FALSE)
+p_enrich_T <- phyper(T_counts$x - 1, W, Npairs - W, T_counts$m, lower.tail = FALSE)
+
+#normal vs tumour difference in within/between proportions 
+mat <- matrix(c(N_counts$x, N_counts$m - N_counts$x,
+                T_counts$x, T_counts$m - T_counts$x),
+              nrow=2, byrow=TRUE,
+              dimnames=list(c("normal","tumour"), c("within","between")))
+
+test_diff <- fisher.test(mat)
+
+
+res_glasso_wgcna <- data.frame(
+  condition = c("normal","tumour"),
+  total_edges_m = c(N_counts$m, T_counts$m),
+  within_edges_x = c(N_counts$x, T_counts$x),
+  within_fraction = c(N_counts$frac, T_counts$frac),
+  expected_fraction = expected_within,
+  enrichment = c(N_counts$frac, T_counts$frac) / expected_within,
+  p_value_enrichment = c(p_enrich_N, p_enrich_T)
+)
+
+print(res_glasso_wgcna)
+
+cat("\n2x2 Fisher test (normal vs tumour within/between proportions):\n")
+print(test_diff)
+```
+
+Which WGCNA modules gain/lose conditional dependence edges in tumour?
+
+```{r}
+#make sure we got right names
+featN <- colnames(X_N_graph)
+featT <- colnames(X_T_graph)
+dimnames(ThetaN) <- list(featN, featN)
+dimnames(ThetaT) <- list(featT, featT)
+
+#define common miRNAs AFTER dimnames exist
+common_glasso <- Reduce(intersect, list(
+  names(moduleColors_wgcna),
+  rownames(ThetaN),
+  rownames(ThetaT)
+))
+
+
+#module labels
+mod2 <- moduleColors_wgcna[common_glasso]
+names(mod2) <- common_glasso
+
+count_edges_between_modules <- function(Theta, mod, common, eps = 1e-8) {
+  Th <- Theta[common, common, drop = FALSE]
+  A <- abs(Th) > eps
+  diag(A) <- FALSE
+  idx <- which(A & upper.tri(A), arr.ind = TRUE)
+  if (nrow(idx) == 0) return(table())  # empty
+
+  g1 <- rownames(Th)[idx[,1]]
+  g2 <- colnames(Th)[idx[,2]]
+  m1 <- mod[g1]
+  m2 <- mod[g2]
+  table(pmin(m1, m2), pmax(m1, m2))
+}
+
+tabN <- count_edges_between_modules(ThetaN, mod2, common_glasso, eps = eps)
+tabT <- count_edges_between_modules(ThetaT, mod2, common_glasso, eps = eps)
+
+tabN
+tabT
+
+
+```
+
+WGCNA kWithin vs glasso degree
+
+```{r}
+
+hubData2 <- hubData[hubData$module != "grey",]
+
+
+kW <- hubData2$kWithin
+names(kW) <- hubData2$miRNA
+
+common_glasso <- intersect(names(degN), names(kW))
+
+# adjacency with proper dimnames
+A_N <- abs(ThetaN[common_glasso, common_glasso]) > eps; diag(A_N) <- FALSE
+A_T <- abs(ThetaT[common_glasso, common_glasso]) > eps; diag(A_T) <- FALSE
+dimnames(A_N) <- list(common_glasso, common_glasso)
+dimnames(A_T) <- list(common_glasso, common_glasso)
+
+degN <- igraph::degree(igraph::graph_from_adjacency_matrix(A_N, mode="undirected", diag=FALSE))
+degT <- igraph::degree(igraph::graph_from_adjacency_matrix(A_T, mode="undirected", diag=FALSE))
+
+#head(degN)
+#head(kW)
+
+
+#compute Spearman on aligned vectors
+cor_glasso_normal <- cor(degN[common_glasso], kW[common_glasso], method = "spearman", use = "complete.obs")
+cor_glasso_tumour <- cor(degT[common_glasso], kW[common_glasso], method = "spearman", use = "complete.obs")
+
+cor_glasso_normal
+cor_glasso_tumour
+
+
+topk <- 100
+
+top_gl_N <- names(sort(degN, decreasing = TRUE))[1:topk]
+top_gl_T <- names(sort(degT, decreasing = TRUE))[1:topk]
+top_wgc  <- names(sort(kW,  decreasing = TRUE))[1:topk]
+
+c(overlap_normal = length(intersect(top_gl_N, top_wgc)), overlap_tumour = length(intersect(top_gl_T, top_wgc)))
+
+
+```

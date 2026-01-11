@@ -1,0 +1,588 @@
+---
+title: "Dataset2_separate"
+format: html
+editor: visual
+---
+
+```{r}
+# Setup
+library(WGCNA)
+library(nlme)
+
+options(stringsAsFactors = FALSE)
+disableWGCNAThreads()
+set.seed(1)
+
+ctrl_lme <- nlme::lmeControl(
+  singular.ok   = TRUE,
+  returnObject  = TRUE,
+  opt           = "optim",
+  msMaxIter     = 200,
+  maxIter       = 200,
+  niterEM       = 50
+)
+
+# Load + pheno
+infile <- "GSE62043_clean_noOutliers_20251223.RData"
+message("Loading: ", infile)
+load(infile)
+
+datExpr <- datExpr0
+stopifnot(identical(rownames(datExpr), rownames(sample_info)))
+
+pheno <- sample_info
+stopifnot(all(c("patient_id","tumour","Age","Gender") %in% colnames(pheno)))
+stopifnot("condition" %in% colnames(pheno))
+```
+
+```{r}
+# QC + split
+gsg <- goodSamplesGenes(datExpr, verbose = 3)
+stopifnot(gsg$allOK)
+table(pheno$condition)
+
+datExpr_tumor  <- datExpr[pheno$condition == "tumor", , drop = FALSE]
+datExpr_normal <- datExpr[pheno$condition == "normal", , drop = FALSE]
+stopifnot(identical(colnames(datExpr_tumor), colnames(datExpr_normal)))
+```
+
+```{r}
+# Soft power
+powers <- 1:20
+networkType <- "unsigned"
+
+sft_tumor  <- pickSoftThreshold(datExpr_tumor,  powerVector = powers, networkType = networkType, verbose = 5)
+sft_normal <- pickSoftThreshold(datExpr_normal, powerVector = powers, networkType = networkType, verbose = 5)
+
+choosePower <- function(sft) {
+  fi <- sft$fitIndices
+  r2 <- -sign(fi[,3]) * fi[,2]
+  ok <- which(r2 >= 0.90)
+  if (length(ok)) fi[ok[1], 1] else fi[which.max(r2), 1]
+}
+
+softPower_tumor  <- choosePower(sft_tumor)
+softPower_normal <- choosePower(sft_normal)
+softPower_cons   <- min(softPower_tumor, softPower_normal)
+
+message("Powers: tumor=", softPower_tumor,
+        " normal=", softPower_normal, " cons=", softPower_cons)
+
+par(mfrow = c(2,2))
+plot(sft_tumor$fitIndices[,1],  -sign(sft_tumor$fitIndices[,3]) * sft_tumor$fitIndices[,2],
+     xlab="Power", ylab="R^2", type="n", main="Tumor R^2")
+text(sft_tumor$fitIndices[,1], -sign(sft_tumor$fitIndices[,3]) * sft_tumor$fitIndices[,2],
+     labels=powers, cex=0.8, col="red"); abline(h=0.9, col="red")
+plot(sft_tumor$fitIndices[,1], sft_tumor$fitIndices[,5],
+     xlab="Power", ylab="k", type="n", main="Tumor k")
+text(sft_tumor$fitIndices[,1], sft_tumor$fitIndices[,5], labels=powers, cex=0.8, col="red")
+
+plot(sft_normal$fitIndices[,1],  -sign(sft_normal$fitIndices[,3]) * sft_normal$fitIndices[,2],
+     xlab="Power", ylab="R^2", type="n", main="Normal R^2")
+text(sft_normal$fitIndices[,1], -sign(sft_normal$fitIndices[,3]) * sft_normal$fitIndices[,2],
+     labels=powers, cex=0.8, col="red"); abline(h=0.9, col="red")
+plot(sft_normal$fitIndices[,1], sft_normal$fitIndices[,5],
+     xlab="Power", ylab="k", type="n", main="Normal k")
+text(sft_normal$fitIndices[,1], sft_normal$fitIndices[,5], labels=powers, cex=0.8, col="red")
+par(mfrow = c(1,1))
+```
+
+
+```{r}
+# Helper WGCNA
+run_single_wgcna <- function(datExpr_subset,
+                             softPower = 7,
+                             minModuleSize = 70,
+                             deepSplit = 2,
+                             mergeCutHeight = 0.25,
+                             networkType = "unsigned",
+                             maxBlockSize = 12000) {
+  nG <- ncol(datExpr_subset)
+  use_blockwise <- nG > maxBlockSize
+  if (use_blockwise) {
+    net <- blockwiseModules(
+      datExpr_subset,
+      power = softPower,
+      networkType = networkType,
+      TOMType = networkType,
+      minModuleSize = minModuleSize,
+      deepSplit = deepSplit,
+      pamRespectsDendro = FALSE,
+      mergeCutHeight = mergeCutHeight,
+      numericLabels = FALSE,
+      maxBlockSize = maxBlockSize,
+      saveTOMs = FALSE,
+      verbose = 3
+    )
+    list(moduleColors = net$colors, MEs = orderMEs(net$MEs), geneTree = net$dendrograms)
+  } else {
+    adjacency_mat <- adjacency(datExpr_subset, power = softPower, type = networkType)
+    TOM <- TOMsimilarity(adjacency_mat, TOMType = networkType)
+    dissTOM <- 1 - TOM
+    geneTree <- hclust(as.dist(dissTOM), method = "average")
+    dynamicMods <- cutreeDynamic(
+      dendro = geneTree,
+      distM = dissTOM,
+      deepSplit = deepSplit,
+      pamRespectsDendro = FALSE,
+      minClusterSize = minModuleSize
+    )
+    dynamicColors <- labels2colors(dynamicMods)
+    merge <- mergeCloseModules(datExpr_subset, dynamicColors, cutHeight = mergeCutHeight, verbose = 0)
+    list(moduleColors = merge$colors, MEs = orderMEs(merge$newMEs), geneTree = geneTree)
+  }
+}
+```
+
+```{r}
+# Consensus modules
+multiExpr_cons <- list(
+  Tumor  = list(data = datExpr_tumor),
+  Normal = list(data = datExpr_normal)
+)
+
+consensus_net <- blockwiseConsensusModules(
+  multiExpr_cons,
+  power = softPower_cons,
+  networkType = networkType,
+  TOMType = networkType,
+  minModuleSize = 70,
+  deepSplit = 2,
+  pamRespectsDendro = FALSE,
+  mergeCutHeight = 0.25,
+  numericLabels = FALSE,
+  maxBlockSize = 12000,
+  saveTOMs = FALSE,
+  verbose = 3
+)
+
+consensus_colors <- setNames(consensus_net$colors, colnames(datExpr_tumor))
+stopifnot(identical(names(consensus_colors), colnames(datExpr_normal)))
+table(consensus_colors)
+
+ME_cons_tumor  <- orderMEs(moduleEigengenes(datExpr_tumor,  colors = consensus_colors)$eigengenes)
+ME_cons_normal <- orderMEs(moduleEigengenes(datExpr_normal, colors = consensus_colors)$eigengenes)
+```
+
+```{r}
+# LMM on consensus MEs
+pheno$patient_id <- as.factor(pheno$patient_id)
+pheno$Gender     <- as.factor(pheno$Gender)
+pheno$Age        <- as.numeric(pheno$Age)
+
+sampleTraits <- pheno[, c("patient_id","tumour","Age","Gender")]
+rownames(sampleTraits) <- rownames(pheno)
+
+ME_cons_all <- orderMEs(moduleEigengenes(datExpr, colors = consensus_colors)$eigengenes)
+datLMM_cons <- cbind(sampleTraits[rownames(ME_cons_all), ], as.data.frame(ME_cons_all))
+
+modNames_cons <- colnames(ME_cons_all)
+cons_lmm <- lapply(modNames_cons, function(mn) {
+  form <- as.formula(paste(mn, "~ tumour + Age + Gender"))
+  fit <- tryCatch(
+    lme(form, random = ~ 1 | patient_id, data = datLMM_cons,
+        na.action = na.omit, method = "REML", control = ctrl_lme),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) {
+    data.frame(module = mn, beta_tumour = NA, t_tumour = NA, p_tumour = NA, stringsAsFactors = FALSE)
+  } else {
+    sm <- summary(fit)
+    tr <- sm$tTable["tumour", ]
+    data.frame(
+      module = mn,
+      beta_tumour = unname(tr["Value"]),
+      t_tumour    = unname(tr["t-value"]),
+      p_tumour    = unname(tr["p-value"]),
+      stringsAsFactors = FALSE
+    )
+  }
+})
+
+cons_lmm_df <- do.call(rbind, cons_lmm)
+cons_lmm_df$padj_BH <- p.adjust(cons_lmm_df$p_tumour, method = "BH")
+cons_lmm_df <- cons_lmm_df[order(cons_lmm_df$p_tumour), ]
+
+print(cons_lmm_df)
+write.csv(cons_lmm_df, file = "GSE62043_consensus_LMM_results.csv", row.names = FALSE)
+```
+
+```{r}
+# Consensus preservation
+multiColor_cons <- list(Tumor = consensus_colors, Normal = consensus_colors)
+
+set.seed(12345)
+mp_cons <- modulePreservation(
+  multiData = multiExpr_cons,
+  multiColor = multiColor_cons,
+  dataIsExpr = TRUE,
+  networkType = networkType,
+  referenceNetworks = c(1, 2),
+  nPermutations = 200,
+  randomSeed = 12345,
+  verbose = 3,
+  parallelCalculation = FALSE
+)
+save(mp_cons, file = "GSE62043_modulePreservation_consensus.RData")
+
+Z_tum_in_norm <- mp_cons$preservation$Z$ref.Tumor$inColumnsAlsoPresentIn.Normal
+Z_norm_in_tum <- mp_cons$preservation$Z$ref.Normal$inColumnsAlsoPresentIn.Tumor
+head(Z_tum_in_norm); head(Z_norm_in_tum)
+```
+
+```{r}
+# Separate networks + preservation
+tumor_net  <- run_single_wgcna(datExpr_tumor,  softPower = softPower_tumor)
+normal_net <- run_single_wgcna(datExpr_normal, softPower = softPower_normal)
+
+tumor_colors  <- setNames(tumor_net$moduleColors,  colnames(datExpr_tumor))
+normal_colors <- setNames(normal_net$moduleColors, colnames(datExpr_normal))
+table(tumor_colors); table(normal_colors)
+
+plot_all_dendrograms <- function(dendros, prefix = "Block") {
+  if (is.null(dendros)) stop("dendros is NULL")
+  if (!is.list(dendros)) dendros <- list(dendros)
+  for (b in seq_along(dendros)) {
+    plot(dendros[[b]],
+         main = paste0(prefix, " ", b, " clustering"),
+         xlab = "", sub = "", labels = FALSE)
+  }
+}
+
+plot_all_dendrograms(tumor_net$geneTree,  prefix = "Tumor")
+plot_all_dendrograms(normal_net$geneTree, prefix = "Normal")
+
+multiExpr_sep <- list(
+  Tumor  = list(data = datExpr_tumor),
+  Normal = list(data = datExpr_normal)
+)
+multiColor_sep <- list(Tumor = tumor_colors, Normal = normal_colors)
+
+set.seed(12345)
+mp_expr <- modulePreservation(
+  multiData = multiExpr_sep,
+  multiColor = multiColor_sep,
+  dataIsExpr = TRUE,
+  networkType = networkType,
+  referenceNetworks = c(1, 2),
+  nPermutations = 200,
+  randomSeed = 12345,
+  verbose = 3,
+  parallelCalculation = FALSE
+)
+save(mp_expr, file = "GSE62043_modulePreservation_separate.RData")
+```
+
+```{r}
+# Preservation summary
+extract_preservation <- function(mp_obj, ref = c("Tumor","Normal"), test = c("Tumor","Normal")) {
+  ref  <- match.arg(ref); test <- match.arg(test)
+  ref_key  <- paste0("ref.", ref)
+  test_key <- paste0("inColumnsAlsoPresentIn.", test)
+
+  zlist <- mp_obj$preservation$Z
+  statsZ <- zlist[[ref_key]][[test_key]]
+  if (is.null(statsZ)) stop("No Z for ", ref_key, " vs ", test_key)
+  if ("gold" %in% rownames(statsZ)) statsZ <- statsZ[rownames(statsZ) != "gold", , drop = FALSE]
+
+  zsum_col <- intersect(c("Zsummary.pres", "Zsummary"), colnames(statsZ))[1]
+  if (is.na(zsum_col)) stop("No Zsummary column in ", paste(colnames(statsZ), collapse = ", "))
+  Zsummary_pres <- statsZ[, zsum_col]
+
+  obslist <- mp_obj$preservation$observed
+  medianRank_pres <- NULL
+  if (!is.null(obslist)) {
+    statsO <- obslist[[ref_key]][[test_key]]
+    if (!is.null(statsO) && "gold" %in% rownames(statsO)) statsO <- statsO[rownames(statsO) != "gold", , drop = FALSE]
+    if (!is.null(statsO)) {
+      mcol <- intersect(c("medianRank.pres", "medianRank"), colnames(statsO))[1]
+      if (!is.na(mcol)) medianRank_pres <- statsO[rownames(statsZ), mcol]
+    }
+  }
+  if (is.null(medianRank_pres)) medianRank_pres <- rank(-Zsummary_pres, ties.method = "average")
+
+  out <- data.frame(
+    module = rownames(statsZ),
+    Zsummary_pres = as.numeric(Zsummary_pres),
+    medianRank_pres = as.numeric(medianRank_pres),
+    row.names = NULL
+  )
+  out[order(-out$Zsummary_pres), ]
+}
+
+tumor_in_normal <- extract_preservation(mp_expr, ref = "Tumor",  test = "Normal")
+normal_in_tumor <- extract_preservation(mp_expr, ref = "Normal", test = "Tumor")
+
+print(tumor_in_normal)
+print(normal_in_tumor)
+
+plot(tumor_in_normal$Zsummary_pres,
+     xaxt = "n", pch = 19,
+     xlab = "Tumor modules",
+     ylab = "Zsummary",
+     main = "Tumor→Normal preservation")
+axis(1, at = seq_along(tumor_in_normal$module),
+     labels = tumor_in_normal$module, las = 2, cex.axis = 0.7)
+abline(h = 2,  col = "red",  lty = 2)
+abline(h = 10, col = "blue", lty = 2)
+
+save(consensus_net, consensus_colors,
+     ME_cons_tumor, ME_cons_normal, ME_cons_all, cons_lmm_df,
+     tumor_net, normal_net, tumor_colors, normal_colors,
+     tumor_in_normal, normal_in_tumor,
+     file = "GSE62043_WGCNA_results.RData")
+```
+
+```{r}
+# Compare to paired export
+suppressPackageStartupMessages({
+  library(WGCNA)
+  library(nlme)
+  library(dplyr)
+  library(pheatmap)
+  library(mclust)
+})
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+dataset_id <- "GSE62043"
+paired_file <- "paired_wgcna_export_GSE62043_20260102.rds"
+paired <- readRDS(paired_file)
+message("Loaded paired export: ", paired_file)
+
+moduleColors_wgcna <- paired$moduleColors
+lmm_wgcna          <- paired$lmm_results
+softPower_wgcna    <- paired$softPower %||% paired$softpower
+networkType_wgcna  <- paired$networkType %||% "unsigned"
+
+stopifnot(!is.null(names(moduleColors_wgcna)))
+stopifnot(is.numeric(softPower_wgcna) && length(softPower_wgcna) == 1)
+
+moduleColors_tumor  <- tumor_colors
+moduleColors_normal <- normal_colors
+
+genes_common <- Reduce(intersect, list(
+  names(moduleColors_wgcna),
+  names(moduleColors_tumor),
+  names(moduleColors_normal)
+))
+if (length(genes_common) < 100) stop("Too few common genes: ", length(genes_common))
+message("Common genes: ", length(genes_common))
+
+compare_module_overlap <- function(colors_A, colors_B,
+                                   name_A = "A", name_B = "B",
+                                   dropGrey = TRUE,
+                                   minSize = 10,
+                                   cluster_rows = TRUE, cluster_cols = TRUE) {
+
+  common <- intersect(names(colors_A), names(colors_B))
+  ca <- colors_A[common]
+  cb <- colors_B[common]
+
+  if (dropGrey) {
+    keep <- !(ca %in% "grey" | cb %in% "grey")
+    ca <- ca[keep]; cb <- cb[keep]
+  }
+
+  tab <- table(A = ca, B = cb)
+  tab <- tab[rowSums(tab) >= minSize, colSums(tab) >= minSize, drop = FALSE]
+
+  rownames(tab) <- paste0(rownames(tab), " (n=", rowSums(tab), ")")
+  colnames(tab) <- paste0(colnames(tab), " (n=", colSums(tab), ")")
+
+  pheatmap::pheatmap(
+    tab,
+    cluster_rows = cluster_rows,
+    cluster_cols = cluster_cols,
+    main = paste0("Overlap: ", name_A, " vs ", name_B)
+  )
+
+  ari <- mclust::adjustedRandIndex(as.integer(factor(ca)), as.integer(factor(cb)))
+  cat("\nARI(", name_A, " vs ", name_B, ")=", signif(ari, 4),
+      " [n=", length(ca), "]\n", sep = "")
+
+  invisible(list(tab = tab, ari = ari, n = length(ca)))
+}
+
+ov_w_t <- compare_module_overlap(moduleColors_wgcna, moduleColors_tumor,  "Paired", "Tumor")
+ov_w_n <- compare_module_overlap(moduleColors_wgcna, moduleColors_normal, "Paired", "Normal")
+ov_t_n <- compare_module_overlap(moduleColors_tumor,  moduleColors_normal, "Tumor",  "Normal")
+
+enforce_pairing <- function(d, id = "patient_id", cond = "tumour") {
+  tab <- table(d[[id]], d[[cond]])
+  keep_ids <- rownames(tab)[rowSums(tab > 0) == 2]
+  d[d[[id]] %in% keep_ids, , drop = FALSE]
+}
+
+fit_module_lmm <- function(MEs_mat, traits,
+                           covars = c("Age", "Gender"),
+                           tumour_var = "tumour",
+                           id_var = "patient_id") {
+
+  stopifnot(identical(rownames(MEs_mat), rownames(traits)))
+
+  covars <- covars[covars %in% colnames(traits)]
+  covars <- covars[!sapply(traits[covars], function(v) all(is.na(v)))]
+  rhs <- paste(c(tumour_var, covars), collapse = " + ")
+
+  dat <- cbind(traits[, c(id_var, tumour_var, covars), drop = FALSE],
+               as.data.frame(MEs_mat))
+
+  res <- lapply(colnames(MEs_mat), function(mn) {
+    cols_needed <- c(id_var, tumour_var, covars, mn)
+    d <- dat[, cols_needed, drop = FALSE]
+    d <- d[complete.cases(d), , drop = FALSE]
+    d <- enforce_pairing(d, id = id_var, cond = tumour_var)
+    if (nrow(d) < 4) return(data.frame(module = mn, beta_tumour = NA, t_tumour = NA, p_tumour = NA))
+
+    fit <- tryCatch(
+      nlme::lme(as.formula(paste(mn, "~", rhs)),
+                random = as.formula(paste0("~1|", id_var)),
+                data = d, method = "REML", control = ctrl_lme),
+      error = function(e) NULL
+    )
+    if (is.null(fit)) return(data.frame(module = mn, beta_tumour = NA, t_tumour = NA, p_tumour = NA))
+
+    sm <- summary(fit)
+    coef_name <- if (tumour_var %in% rownames(sm$tTable)) tumour_var else
+      grep(paste0("^", tumour_var), rownames(sm$tTable), value = TRUE)[1]
+
+    data.frame(
+      module = mn,
+      beta_tumour = sm$tTable[coef_name, "Value"],
+      t_tumour    = sm$tTable[coef_name, "t-value"],
+      p_tumour    = sm$tTable[coef_name, "p-value"]
+    )
+  })
+
+  out <- bind_rows(res)
+  out$FDR_tumour <- p.adjust(out$p_tumour, method = "BH")
+  out[order(out$p_tumour), ]
+}
+
+ME_tumor_all  <- orderMEs(moduleEigengenes(datExpr, colors = moduleColors_tumor)$eigengenes)
+ME_normal_all <- orderMEs(moduleEigengenes(datExpr, colors = moduleColors_normal)$eigengenes)
+
+lmm_tumor  <- fit_module_lmm(ME_tumor_all,  sampleTraits)
+lmm_normal <- fit_module_lmm(ME_normal_all, sampleTraits)
+
+get_top_color <- function(lmm_df) sub("^ME", "", lmm_df$module[order(lmm_df$p_tumour)][1])
+
+top_wgcna_color  <- get_top_color(lmm_wgcna)
+top_tumor_color  <- get_top_color(lmm_tumor)
+top_normal_color <- get_top_color(lmm_normal)
+
+jaccard <- function(a, b) length(intersect(a, b)) / length(union(a, b))
+
+genes_w <- names(moduleColors_wgcna)[moduleColors_wgcna == top_wgcna_color]
+genes_t <- names(moduleColors_tumor)[moduleColors_tumor == top_tumor_color]
+genes_n <- names(moduleColors_normal)[moduleColors_normal == top_normal_color]
+
+cat("\nTop modules:\n")
+cat("Paired: ", top_wgcna_color, " (", length(genes_w), ")\n", sep="")
+cat("Tumor : ", top_tumor_color, " (", length(genes_t), ")\n", sep="")
+cat("Normal: ", top_normal_color, " (", length(genes_n), ")\n", sep="")
+
+cat("\nJaccard:\n")
+cat("Paired vs Tumor : ", signif(jaccard(genes_w, genes_t), 4), "\n", sep="")
+cat("Paired vs Normal: ", signif(jaccard(genes_w, genes_n), 4), "\n", sep="")
+
+compute_TOM_subset <- function(datExpr_mat, power, networkType = "unsigned") {
+  A <- adjacency(datExpr_mat, power = power, type = networkType)
+  TOM <- TOMsimilarity(A, TOMType = networkType)
+  dimnames(TOM) <- list(colnames(datExpr_mat), colnames(datExpr_mat))
+  TOM
+}
+
+pick_top_var_genes <- function(datExpr_mat, n = 3000) {
+  v <- apply(datExpr_mat, 2, var, na.rm = TRUE)
+  names(sort(v, decreasing = TRUE))[seq_len(min(n, length(v)))]
+}
+
+build_three_TOMs <- function(gene_counts = c(4000, 3000, 2000, 1500, 1000)) {
+  for (ng in gene_counts) {
+    message("TOM subset: ", ng)
+    genes_sub <- intersect(pick_top_var_genes(datExpr, n = ng), genes_common)
+    if (length(genes_sub) < 500) next
+
+    out <- tryCatch({
+      TOM_w <- compute_TOM_subset(datExpr[, genes_sub, drop = FALSE],      power = softPower_wgcna,  networkType = networkType_wgcna); gc()
+      TOM_t <- compute_TOM_subset(datExpr_tumor[, genes_sub, drop = FALSE], power = softPower_tumor,  networkType = networkType); gc()
+      TOM_n <- compute_TOM_subset(datExpr_normal[, genes_sub, drop = FALSE],power = softPower_normal, networkType = networkType); gc()
+      list(genes = genes_sub, TOM_w = TOM_w, TOM_t = TOM_t, TOM_n = TOM_n)
+    }, error = function(e) { message("fail: ", e$message); NULL })
+
+    if (!is.null(out)) return(out)
+  }
+  stop("TOM failed for all sizes.")
+}
+
+compare_edge_weights <- function(TOM_A, TOM_B, name_A = "A", name_B = "B") {
+  common <- intersect(rownames(TOM_A), rownames(TOM_B))
+  A <- TOM_A[common, common]
+  B <- TOM_B[common, common]
+  v1 <- A[upper.tri(A)]
+  v2 <- B[upper.tri(B)]
+  test <- cor.test(v1, v2, method = "spearman")
+  print(test)
+  plot(v1, v2, pch = 20,
+       xlab = paste0(name_A, " TOM"),
+       ylab = paste0(name_B, " TOM"),
+       main = paste0("Edges: ", name_A, " vs ", name_B))
+  invisible(test)
+}
+
+compare_hubs <- function(TOM_A, TOM_B, name_A = "A", name_B = "B", topK = c(25, 50, 75, 100)) {
+  common <- intersect(rownames(TOM_A), rownames(TOM_B))
+  A <- TOM_A[common, common]
+  B <- TOM_B[common, common]
+  kA <- rowSums(A) - diag(A)
+  kB <- rowSums(B) - diag(B)
+  test <- cor.test(kA, kB, method = "spearman")
+  print(test)
+  cat("\nHub overlap (", name_A, " vs ", name_B, ")\n", sep="")
+  for (K in topK) {
+    hubsA <- names(sort(kA, decreasing = TRUE))[1:K]
+    hubsB <- names(sort(kB, decreasing = TRUE))[1:K]
+    ol <- length(intersect(hubsA, hubsB))
+    cat("K=", K, " overlap=", ol, " (", round(100*ol/K, 1), "%)\n", sep="")
+  }
+  plot(kA, kB, pch = 20,
+       xlab = paste0(name_A, " strength"),
+       ylab = paste0(name_B, " strength"),
+       main = paste0("Hubs: ", name_A, " vs ", name_B))
+  abline(lm(kB ~ kA), lty = 2)
+  invisible(list(test = test, kA = kA, kB = kB))
+}
+
+tom_pack <- build_three_TOMs()
+
+ew_w_t <- compare_edge_weights(tom_pack$TOM_w, tom_pack$TOM_t, "Paired", "Tumor")
+ew_w_n <- compare_edge_weights(tom_pack$TOM_w, tom_pack$TOM_n, "Paired", "Normal")
+ew_t_n <- compare_edge_weights(tom_pack$TOM_t, tom_pack$TOM_n, "Tumor",  "Normal")
+
+hb_w_t <- compare_hubs(tom_pack$TOM_w, tom_pack$TOM_t, "Paired", "Tumor")
+hb_w_n <- compare_hubs(tom_pack$TOM_w, tom_pack$TOM_n, "Paired", "Normal")
+hb_t_n <- compare_hubs(tom_pack$TOM_t, tom_pack$TOM_n, "Tumor",  "Normal")
+
+comparison_out <- list(
+  dataset_id = dataset_id,
+  paired_file = paired_file,
+  genes_common = genes_common,
+  overlap = list(paired_vs_tumor = ov_w_t, paired_vs_normal = ov_w_n, tumor_vs_normal = ov_t_n),
+  lmm = list(paired = lmm_wgcna, tumor = lmm_tumor, normal = lmm_normal),
+  top_modules = list(paired = top_wgcna_color, tumor = top_tumor_color, normal = top_normal_color),
+  jaccard = c(paired_vs_tumor = jaccard(genes_w, genes_t), paired_vs_normal = jaccard(genes_w, genes_n)),
+  tom_subset = list(genes = tom_pack$genes),
+  edge_tests = list(paired_vs_tumor = ew_w_t, paired_vs_normal = ew_w_n, tumor_vs_normal = ew_t_n),
+  hub_tests  = list(paired_vs_tumor = hb_w_t$test, paired_vs_normal = hb_w_n$test, tumor_vs_normal = hb_t_n$test)
+)
+
+saveRDS(comparison_out, file = paste0(dataset_id, "_compare_separate_vs_paired.rds"))
+write.csv(lmm_tumor,  paste0(dataset_id, "_tumorNet_LMM_results.csv"),  row.names = FALSE)
+write.csv(lmm_normal, paste0(dataset_id, "_normalNet_LMM_results.csv"), row.names = FALSE)
+
+message("Saved: ", dataset_id, "_compare_separate_vs_paired.rds")
+
+
+```

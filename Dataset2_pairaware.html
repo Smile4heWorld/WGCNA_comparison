@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Datset2_pairaware</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="Dataset2_pairaware_files/libs/clipboard/clipboard.min.js"></script>
+<script src="Dataset2_pairaware_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="Dataset2_pairaware_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="Dataset2_pairaware_files/libs/quarto-html/popper.min.js"></script>
+<script src="Dataset2_pairaware_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="Dataset2_pairaware_files/libs/quarto-html/anchor.min.js"></script>
+<link href="Dataset2_pairaware_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="Dataset2_pairaware_files/libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="Dataset2_pairaware_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="Dataset2_pairaware_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="Dataset2_pairaware_files/libs/bootstrap/bootstrap-bb462d781dde1847d9e3ccf7736099dd.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+
+</head>
+
+<body class="fullcontent quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Datset2_pairaware</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Setup</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(WGCNA)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Paket 'WGCNA' wurde unter R Version 4.5.2 erstellt</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Lade nötiges Paket: dynamicTreeCut</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Paket 'dynamicTreeCut' wurde unter R Version 4.5.2 erstellt</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Lade nötiges Paket: fastcluster</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Paket 'fastcluster' wurde unter R Version 4.5.2 erstellt</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attache Paket: 'fastcluster'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Das folgende Objekt ist maskiert 'package:stats':
+
+    hclust</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code></code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attache Paket: 'WGCNA'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Das folgende Objekt ist maskiert 'package:stats':
+
+    cor</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(nlme)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attache Paket: 'dplyr'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Das folgende Objekt ist maskiert 'package:nlme':
+
+    collapse</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Die folgenden Objekte sind maskiert von 'package:stats':
+
+    filter, lag</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Die folgenden Objekte sind maskiert von 'package:base':
+
+    intersect, setdiff, setequal, union</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(pheatmap)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="fu">options</span>(<span class="at">stringsAsFactors =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="fu">disableWGCNAThreads</span>()</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1</span>)</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>ctrl_lme <span class="ot">&lt;-</span> nlme<span class="sc">::</span><span class="fu">lmeControl</span>(</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">singular.ok  =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">returnObject =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">opt          =</span> <span class="st">"optim"</span>,</span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">msMaxIter    =</span> <span class="dv">200</span>,</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">maxIter      =</span> <span class="dv">200</span>,</span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">niterEM      =</span> <span class="dv">50</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a><span class="co"># Load cleaned data + keep only paired subjects</span></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a>clean_file <span class="ot">&lt;-</span> <span class="st">"GSE62043_clean_noOutliers_20251223.RData"</span></span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a><span class="fu">load</span>(clean_file)</span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a>datExpr <span class="ot">&lt;-</span> datExpr0</span>
+<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a>sampleTraits <span class="ot">&lt;-</span> sample_traits</span>
+<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">identical</span>(<span class="fu">rownames</span>(datExpr), <span class="fu">rownames</span>(sampleTraits)))</span>
+<span id="cb17-24"><a href="#cb17-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-25"><a href="#cb17-25" aria-hidden="true" tabindex="-1"></a>sampleTraits<span class="sc">$</span>patient_id <span class="ot">&lt;-</span> <span class="fu">factor</span>(sampleTraits<span class="sc">$</span>patient_id)</span>
+<span id="cb17-26"><a href="#cb17-26" aria-hidden="true" tabindex="-1"></a>sampleTraits<span class="sc">$</span>tumour     <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(sampleTraits<span class="sc">$</span>tumour)</span>
+<span id="cb17-27"><a href="#cb17-27" aria-hidden="true" tabindex="-1"></a>sampleTraits<span class="sc">$</span>Age        <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(<span class="fu">as.numeric</span>(sampleTraits<span class="sc">$</span>Age))</span>
+<span id="cb17-28"><a href="#cb17-28" aria-hidden="true" tabindex="-1"></a>sampleTraits<span class="sc">$</span>Gender     <span class="ot">&lt;-</span> <span class="fu">factor</span>(sampleTraits<span class="sc">$</span>Gender)</span>
+<span id="cb17-29"><a href="#cb17-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-30"><a href="#cb17-30" aria-hidden="true" tabindex="-1"></a>gsg <span class="ot">&lt;-</span> <span class="fu">goodSamplesGenes</span>(datExpr, <span class="at">verbose =</span> <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code> Flagging genes and samples with too many missing values...
+  ..step 1</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">isTRUE</span>(gsg<span class="sc">$</span>allOK))</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>tab <span class="ot">&lt;-</span> <span class="fu">with</span>(sampleTraits, <span class="fu">table</span>(patient_id, tumour))</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>paired_patients <span class="ot">&lt;-</span> <span class="fu">rownames</span>(tab)[<span class="fu">rowSums</span>(tab <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">==</span> <span class="dv">2</span>]</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>keep <span class="ot">&lt;-</span> sampleTraits<span class="sc">$</span>patient_id <span class="sc">%in%</span> paired_patients</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a><span class="fu">message</span>(<span class="st">"Keeping paired samples: "</span>, <span class="fu">sum</span>(keep), <span class="st">" / "</span>, <span class="fu">nrow</span>(sampleTraits),</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">" (patients: "</span>, <span class="fu">length</span>(<span class="fu">unique</span>(sampleTraits<span class="sc">$</span>patient_id[keep])), <span class="st">")"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Keeping paired samples: 186 / 186 (patients: 93)</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>datExpr <span class="ot">&lt;-</span> datExpr[keep, , drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>sampleTraits <span class="ot">&lt;-</span> sampleTraits[keep, , drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">identical</span>(<span class="fu">rownames</span>(datExpr), <span class="fu">rownames</span>(sampleTraits)))</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">dim</span>(datExpr))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1]   186 19595</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Within-subject centering (pair-aware expression)</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>patient <span class="ot">&lt;-</span> sampleTraits<span class="sc">$</span>patient_id</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>grp <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(patient)</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>sum_by_patient  <span class="ot">&lt;-</span> <span class="fu">rowsum</span>(datExpr, <span class="at">group =</span> grp)</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>n_by_patient    <span class="ot">&lt;-</span> <span class="fu">as.vector</span>(<span class="fu">table</span>(grp))</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>mean_by_patient <span class="ot">&lt;-</span> <span class="fu">sweep</span>(sum_by_patient, <span class="dv">1</span>, n_by_patient, <span class="st">"/"</span>)</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>sample_means    <span class="ot">&lt;-</span> mean_by_patient[grp, , drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>datExpr_within <span class="ot">&lt;-</span> datExpr <span class="sc">-</span> sample_means</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">all</span>(<span class="fu">dim</span>(datExpr_within) <span class="sc">==</span> <span class="fu">dim</span>(datExpr)))</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a><span class="fu">dimnames</span>(datExpr_within) <span class="ot">&lt;-</span> <span class="fu">dimnames</span>(datExpr)</span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Soft-threshold on within-subject centered data (unsigned)</span></span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>powers <span class="ot">&lt;-</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">20</span></span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>sft_rm <span class="ot">&lt;-</span> <span class="fu">pickSoftThreshold</span>(</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>  datExpr_within,</span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>  <span class="at">powerVector =</span> powers,</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">networkType =</span> <span class="st">"unsigned"</span>,</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">verbose =</span> <span class="dv">5</span></span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>pickSoftThreshold: will use block size 2283.
+ pickSoftThreshold: calculating connectivity for given powers...
+   ..working on genes 1 through 2283 of 19595
+   ..working on genes 2284 through 4566 of 19595
+   ..working on genes 4567 through 6849 of 19595
+   ..working on genes 6850 through 9132 of 19595
+   ..working on genes 9133 through 11415 of 19595
+   ..working on genes 11416 through 13698 of 19595
+   ..working on genes 13699 through 15981 of 19595
+   ..working on genes 15982 through 18264 of 19595
+   ..working on genes 18265 through 19595 of 19595
+   Power SFT.R.sq  slope truncated.R.sq mean.k. median.k. max.k.
+1      1   0.0953  0.580          0.870 4240.00  4.06e+03 7930.0
+2      2   0.5840 -0.965          0.936 1450.00  1.20e+03 4340.0
+3      3   0.8150 -1.320          0.966  628.00  4.25e+02 2710.0
+4      4   0.8700 -1.440          0.977  314.00  1.70e+02 1830.0
+5      5   0.8950 -1.480          0.986  174.00  7.31e+01 1300.0
+6      6   0.9090 -1.490          0.991  103.00  3.36e+01  962.0
+7      7   0.9170 -1.490          0.994   65.30  1.61e+01  733.0
+8      8   0.9290 -1.470          0.997   43.20  8.11e+00  572.0
+9      9   0.9290 -1.470          0.995   29.70  4.22e+00  456.0
+10    10   0.9370 -1.460          0.998   21.10  2.27e+00  369.0
+11    11   0.9400 -1.450          0.998   15.40  1.28e+00  303.0
+12    12   0.9450 -1.430          0.999   11.50  7.29e-01  252.0
+13    13   0.9460 -1.420          0.998    8.77  4.31e-01  212.0
+14    14   0.9470 -1.410          0.997    6.83  2.59e-01  180.0
+15    15   0.9470 -1.400          0.994    5.41  1.60e-01  155.0
+16    16   0.9500 -1.380          0.992    4.35  9.86e-02  134.0
+17    17   0.9540 -1.360          0.994    3.54  6.16e-02  117.0
+18    18   0.9570 -1.340          0.990    2.93  3.88e-02  102.0
+19    19   0.9570 -1.330          0.989    2.44  2.48e-02   90.3
+20    20   0.9590 -1.310          0.987    2.06  1.61e-02   80.2</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">par</span>(<span class="at">mfrow =</span> <span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">2</span>))</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">1</span>], <span class="sc">-</span><span class="fu">sign</span>(sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">3</span>]) <span class="sc">*</span> sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">2</span>],</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab =</span> <span class="st">"Soft Threshold (power)"</span>,</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylab =</span> <span class="st">"Scale Free Topology Model Fit, signed R^2"</span>,</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>     <span class="at">type =</span> <span class="st">"n"</span>, <span class="at">main =</span> <span class="st">"Scale independence (within-subject)"</span>)</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a><span class="fu">text</span>(sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">1</span>], <span class="sc">-</span><span class="fu">sign</span>(sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">3</span>]) <span class="sc">*</span> sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">2</span>],</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>     <span class="at">labels =</span> powers, <span class="at">cex =</span> <span class="fl">0.8</span>, <span class="at">col =</span> <span class="st">"red"</span>)</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">h =</span> <span class="fl">0.9</span>, <span class="at">col =</span> <span class="st">"red"</span>)</span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">1</span>], sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">5</span>],</span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab =</span> <span class="st">"Soft Threshold (power)"</span>,</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylab =</span> <span class="st">"Mean Connectivity"</span>,</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>     <span class="at">type =</span> <span class="st">"n"</span>, <span class="at">main =</span> <span class="st">"Mean connectivity (within-subject)"</span>)</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a><span class="fu">text</span>(sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">1</span>], sft_rm<span class="sc">$</span>fitIndices[, <span class="dv">5</span>],</span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>     <span class="at">labels =</span> powers, <span class="at">cex =</span> <span class="fl">0.8</span>, <span class="at">col =</span> <span class="st">"red"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>softPower_rm <span class="ot">&lt;-</span> <span class="dv">7</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>softPower_rm</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 7</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># blockwiseModules on within-subject centered data + pooled/within MEs</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>mergeCutHeight <span class="ot">&lt;-</span> <span class="fl">0.25</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>minModuleSize  <span class="ot">&lt;-</span> <span class="dv">70</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>net <span class="ot">&lt;-</span> <span class="fu">blockwiseModules</span>(</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>  datExpr_within,</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">power             =</span> softPower_rm,</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">networkType       =</span> <span class="st">"unsigned"</span>,</span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">TOMType           =</span> <span class="st">"unsigned"</span>,</span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">corType           =</span> <span class="st">"pearson"</span>,</span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">deepSplit         =</span> <span class="dv">2</span>,</span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">minModuleSize     =</span> minModuleSize,</span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">mergeCutHeight    =</span> mergeCutHeight,</span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">pamRespectsDendro =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">maxBlockSize      =</span> <span class="dv">12000</span>,</span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">numericLabels     =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">saveTOMs          =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">verbose           =</span> <span class="dv">5</span></span>
+<span id="cb28-19"><a href="#cb28-19" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code> Calculating module eigengenes block-wise from all genes
+   Flagging genes and samples with too many missing values...
+    ..step 1
+ ....pre-clustering genes to determine blocks..
+   Projective K-means:
+   ..using 163 centers.
+   ..k-means clustering..
+    ..iteration 1
+      ..proposing to move 19097 genes..move accepted.
+    ..iteration 2
+      ..proposing to move 10107 genes..move accepted.
+    ..iteration 3
+      ..proposing to move 5574 genes..move accepted.
+    ..iteration 4
+      ..proposing to move 3543 genes..move accepted.
+    ..iteration 5
+      ..proposing to move 2437 genes..move accepted.
+    ..iteration 6
+      ..proposing to move 1910 genes..move accepted.
+    ..iteration 7
+      ..proposing to move 1597 genes..move accepted.
+    ..iteration 8
+      ..proposing to move 1340 genes..move accepted.
+    ..iteration 9
+      ..proposing to move 1085 genes..move accepted.
+    ..iteration 10
+      ..proposing to move 827 genes..move accepted.
+    ..iteration 11
+      ..proposing to move 689 genes..move accepted.
+    ..iteration 12
+      ..proposing to move 510 genes..move accepted.
+    ..iteration 13
+      ..proposing to move 392 genes..move accepted.
+    ..iteration 14
+      ..proposing to move 333 genes..move accepted.
+    ..iteration 15
+      ..proposing to move 311 genes..move accepted.
+    ..iteration 16
+      ..proposing to move 257 genes..move accepted.
+    ..iteration 17
+      ..proposing to move 213 genes..move accepted.
+    ..iteration 18
+      ..proposing to move 184 genes..move accepted.
+    ..iteration 19
+      ..proposing to move 157 genes..move accepted.
+    ..iteration 20
+       .alignedFirstPC: FYI: svd failed, using a weighted mean instead.
+          ...svd reported: Error in La.svd(x, nu, nv) : Fehlercode 1 von Lapack-Routine 'dgesdd'
+
+      ..proposing to move 124 genes..move accepted.
+    ..iteration 21
+      ..proposing to move 83 genes..move accepted.
+    ..iteration 22
+      ..proposing to move 70 genes..move accepted.
+    ..iteration 23
+      ..proposing to move 52 genes..move accepted.
+    ..iteration 24
+      ..proposing to move 24 genes..move accepted.
+    ..iteration 25
+      ..proposing to move 8 genes..move accepted.
+    ..iteration 26
+      ..proposing to move 8 genes..move accepted.
+    ..iteration 27
+      ..proposing to move 13 genes..move accepted.
+    ..iteration 28
+      ..proposing to move 10 genes..move accepted.
+    ..iteration 29
+      ..proposing to move 7 genes..move accepted.
+    ..iteration 30
+      ..proposing to move 5 genes..move accepted.
+    ..iteration 31
+Could not find a suitable move to improve the clustering.
+Sizes of preliminary clusters:
+membership
+  1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20 
+ 90  78 191 127  59 186 127  86 145 127  45  77  99 106 210  68 146 218  82  74 
+ 21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  36  37  38  39  40 
+126  57 105  91  86 116 183 147  97 239 106  51 137 223  95 143 144 109 121 102 
+ 41  42  43  44  45  46  47  48  49  50  51  52  53  54  55  56  57  58  59  60 
+180 135  98 112 176 128 165 255  97 158 177  63  83  53 117 125 127 230 155 171 
+ 61  62  63  64  65  66  67  68  69  70  71  72  73  74  75  76  77  78  79  80 
+158  88  98 164 131 133  73  55  48  78 136  44 135 178 105 215 106  64 185 303 
+ 81  82  83  84  85  86  87  88  89  90  91  92  93  94  95  96  97  98  99 100 
+ 85 118 202 102  66 265 152  66  77 142 121  78 114 106 122 102  52  55  82 101 
+101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 
+242 116  67  95 102  79 157 118 153  44 155 151  83  62  98 177 142 123 141 166 
+121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 
+ 71 154 238  87  52 114  98  82  28  80 141 139  87  77 150 144 139  74  76 132 
+141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 
+ 62  77 176 102 127  87 120  46  95 104 111  44  65 317 232 227 124 133  99  45 
+161 162 
+157  82 
+   ..merging smaller clusters...
+Block sizes:
+gBlocks
+    1     2 
+11989  7606 
+ ..Working on block 1 .
+    TOM calculation: adjacency..
+    ..will not use multithreading.
+     Fraction of slow calculations: 0.000000
+    ..connectivity..
+    ..matrix multiplication (system BLAS)..
+    ..normalization..
+    ..done.
+ ....clustering..
+ ....detecting modules..
+     ..done.
+ ....calculating module eigengenes..
+     moduleEigengenes : Working on ME for module 1
+     moduleEigengenes : Working on ME for module 2
+     moduleEigengenes : Working on ME for module 3
+     moduleEigengenes : Working on ME for module 4
+     moduleEigengenes : Working on ME for module 5
+     moduleEigengenes : Working on ME for module 6
+     moduleEigengenes : Working on ME for module 7
+     moduleEigengenes : Working on ME for module 8
+     moduleEigengenes : Working on ME for module 9
+     moduleEigengenes : Working on ME for module 10
+     moduleEigengenes : Working on ME for module 11
+     moduleEigengenes : Working on ME for module 12
+     moduleEigengenes : Working on ME for module 13
+ ....checking kME in modules..
+     ..removing 218 genes from module 1 because their KME is too low.
+     ..removing 104 genes from module 2 because their KME is too low.
+     ..removing 116 genes from module 3 because their KME is too low.
+     ..removing 54 genes from module 4 because their KME is too low.
+     ..removing 5 genes from module 5 because their KME is too low.
+     ..removing 4 genes from module 7 because their KME is too low.
+     ..removing 6 genes from module 8 because their KME is too low.
+     ..removing 1 genes from module 9 because their KME is too low.
+ ..Working on block 2 .
+    TOM calculation: adjacency..
+    ..will not use multithreading.
+     Fraction of slow calculations: 0.000000
+    ..connectivity..
+    ..matrix multiplication (system BLAS)..
+    ..normalization..
+    ..done.
+ ....clustering..
+ ....detecting modules..
+     ..done.
+ ....calculating module eigengenes..
+     moduleEigengenes : Working on ME for module 14
+     moduleEigengenes : Working on ME for module 15
+     moduleEigengenes : Working on ME for module 16
+     moduleEigengenes : Working on ME for module 17
+     moduleEigengenes : Working on ME for module 18
+     moduleEigengenes : Working on ME for module 19
+     moduleEigengenes : Working on ME for module 20
+     moduleEigengenes : Working on ME for module 21
+     moduleEigengenes : Working on ME for module 22
+     moduleEigengenes : Working on ME for module 23
+     moduleEigengenes : Working on ME for module 24
+     moduleEigengenes : Working on ME for module 25
+     moduleEigengenes : Working on ME for module 26
+ ....checking kME in modules..
+     ..removing 5 genes from module 1 because their KME is too low.
+     ..removing 1 genes from module 2 because their KME is too low.
+     ..removing 3 genes from module 3 because their KME is too low.
+     ..removing 3 genes from module 4 because their KME is too low.
+     ..removing 7 genes from module 5 because their KME is too low.
+     ..removing 17 genes from module 9 because their KME is too low.
+     ..removing 3 genes from module 10 because their KME is too low.
+     ..removing 9 genes from module 13 because their KME is too low.
+  ..reassigning 533 genes from module 1 to modules with higher KME.
+  ..reassigning 376 genes from module 2 to modules with higher KME.
+  ..reassigning 308 genes from module 3 to modules with higher KME.
+  ..reassigning 128 genes from module 4 to modules with higher KME.
+  ..reassigning 48 genes from module 5 to modules with higher KME.
+  ..reassigning 19 genes from module 6 to modules with higher KME.
+  ..reassigning 17 genes from module 7 to modules with higher KME.
+  ..reassigning 18 genes from module 8 to modules with higher KME.
+  ..reassigning 3 genes from module 9 to modules with higher KME.
+  ..reassigning 7 genes from module 10 to modules with higher KME.
+  ..reassigning 3 genes from module 11 to modules with higher KME.
+  ..reassigning 1 genes from module 12 to modules with higher KME.
+  ..reassigning 5 genes from module 13 to modules with higher KME.
+  ..reassigning 67 genes from module 14 to modules with higher KME.
+  ..reassigning 64 genes from module 15 to modules with higher KME.
+  ..reassigning 40 genes from module 16 to modules with higher KME.
+  ..reassigning 19 genes from module 17 to modules with higher KME.
+  ..reassigning 15 genes from module 18 to modules with higher KME.
+  ..reassigning 10 genes from module 19 to modules with higher KME.
+  ..reassigning 21 genes from module 20 to modules with higher KME.
+  ..reassigning 1 genes from module 21 to modules with higher KME.
+  ..reassigning 11 genes from module 22 to modules with higher KME.
+  ..reassigning 9 genes from module 23 to modules with higher KME.
+  ..reassigning 3 genes from module 26 to modules with higher KME.
+ ..merging modules that are too close..
+     mergeCloseModules: Merging modules whose distance is less than 0.25
+       multiSetMEs: Calculating module MEs.
+         Working on set 1 ...
+         moduleEigengenes: Calculating 27 module eigengenes in given set.
+       multiSetMEs: Calculating module MEs.
+         Working on set 1 ...
+         moduleEigengenes: Calculating 17 module eigengenes in given set.
+       multiSetMEs: Calculating module MEs.
+         Working on set 1 ...
+         moduleEigengenes: Calculating 16 module eigengenes in given set.
+       Calculating new MEs...
+       multiSetMEs: Calculating module MEs.
+         Working on set 1 ...
+         moduleEigengenes: Calculating 16 module eigengenes in given set.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>moduleColors_rm <span class="ot">&lt;-</span> net<span class="sc">$</span>colors</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(moduleColors_rm) <span class="ot">&lt;-</span> <span class="fu">colnames</span>(datExpr_within)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">table</span>(moduleColors_rm))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>moduleColors_rm
+       black         blue        brown         cyan        green  greenyellow 
+         627         2749         1967          131         1129          225 
+        grey      magenta midnightblue         pink       purple          red 
+        3489          314          126          447          249         1113 
+      salmon          tan    turquoise       yellow 
+         175          177         5414         1263 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>MElist_pooled <span class="ot">&lt;-</span> <span class="fu">moduleEigengenes</span>(datExpr, <span class="at">colors =</span> moduleColors_rm)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>MEs_pooled <span class="ot">&lt;-</span> <span class="fu">orderMEs</span>(MElist_pooled<span class="sc">$</span>eigengenes)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>MElist_within <span class="ot">&lt;-</span> <span class="fu">moduleEigengenes</span>(datExpr_within, <span class="at">colors =</span> moduleColors_rm)</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>MEs_within <span class="ot">&lt;-</span> <span class="fu">orderMEs</span>(MElist_within<span class="sc">$</span>eigengenes)</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>MEs_rm <span class="ot">&lt;-</span> MEs_pooled</span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>expr_for_ME_MM <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">identical</span>(MEs_rm, MEs_within)) datExpr_within <span class="cf">else</span> datExpr</span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(net<span class="sc">$</span>dendrograms)) {</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_along</span>(net<span class="sc">$</span>dendrograms)) {</span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">plotDendroAndColors</span>(</span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a>      net<span class="sc">$</span>dendrograms[[i]],</span>
+<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a>      net<span class="sc">$</span>colors[net<span class="sc">$</span>blockGenes[[i]]],</span>
+<span id="cb32-15"><a href="#cb32-15" aria-hidden="true" tabindex="-1"></a>      <span class="fu">paste</span>(<span class="st">"Block"</span>, i, <span class="st">"modules"</span>),</span>
+<span id="cb32-16"><a href="#cb32-16" aria-hidden="true" tabindex="-1"></a>      <span class="at">dendroLabels =</span> <span class="cn">FALSE</span>, <span class="at">hang =</span> <span class="fl">0.03</span>, <span class="at">addGuide =</span> <span class="cn">TRUE</span>, <span class="at">guideHang =</span> <span class="fl">0.05</span></span>
+<span id="cb32-17"><a href="#cb32-17" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb32-18"><a href="#cb32-18" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb32-19"><a href="#cb32-19" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-3-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ME clustering diagnostic</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>METree_rm <span class="ot">&lt;-</span> <span class="fu">hclust</span>(<span class="fu">as.dist</span>(<span class="dv">1</span> <span class="sc">-</span> <span class="fu">cor</span>(MEs_rm, <span class="at">use =</span> <span class="st">"p"</span>)), <span class="at">method =</span> <span class="st">"average"</span>)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(METree_rm, <span class="at">main =</span> <span class="st">"Clustering of module eigengenes (post-merge)"</span>, <span class="at">xlab =</span> <span class="st">""</span>, <span class="at">sub =</span> <span class="st">""</span>)</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">h =</span> mergeCutHeight, <span class="at">col =</span> <span class="st">"red"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="co"># LMMs on module eigengenes</span></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">identical</span>(<span class="fu">rownames</span>(sampleTraits), <span class="fu">rownames</span>(datExpr)))</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">identical</span>(<span class="fu">rownames</span>(MEs_rm), <span class="fu">rownames</span>(sampleTraits)))</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>datLMM_rm <span class="ot">&lt;-</span> <span class="fu">cbind</span>(sampleTraits[<span class="fu">rownames</span>(MEs_rm), , <span class="at">drop =</span> <span class="cn">FALSE</span>], <span class="fu">as.data.frame</span>(MEs_rm))</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>modNames_rm <span class="ot">&lt;-</span> <span class="fu">colnames</span>(MEs_rm)</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>lmm_results_rm <span class="ot">&lt;-</span> <span class="fu">lapply</span>(modNames_rm, <span class="cf">function</span>(mn) {</span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a>  form <span class="ot">&lt;-</span> <span class="fu">as.formula</span>(<span class="fu">paste</span>(mn, <span class="st">"~ tumour + Age + Gender"</span>))</span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a>  fit <span class="ot">&lt;-</span> <span class="fu">lme</span>(</span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>    form,</span>
+<span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">random    =</span> <span class="sc">~</span> <span class="dv">1</span> <span class="sc">|</span> patient_id,</span>
+<span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">data      =</span> datLMM_rm,</span>
+<span id="cb34-14"><a href="#cb34-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">na.action =</span> na.omit,</span>
+<span id="cb34-15"><a href="#cb34-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">method    =</span> <span class="st">"REML"</span>,</span>
+<span id="cb34-16"><a href="#cb34-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">control   =</span> ctrl_lme</span>
+<span id="cb34-17"><a href="#cb34-17" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb34-18"><a href="#cb34-18" aria-hidden="true" tabindex="-1"></a>  sm <span class="ot">&lt;-</span> <span class="fu">summary</span>(fit)</span>
+<span id="cb34-19"><a href="#cb34-19" aria-hidden="true" tabindex="-1"></a>  tr <span class="ot">&lt;-</span> sm<span class="sc">$</span>tTable[<span class="st">"tumour"</span>, ]</span>
+<span id="cb34-20"><a href="#cb34-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(</span>
+<span id="cb34-21"><a href="#cb34-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">module      =</span> mn,</span>
+<span id="cb34-22"><a href="#cb34-22" aria-hidden="true" tabindex="-1"></a>    <span class="at">beta_tumour =</span> <span class="fu">unname</span>(tr[<span class="st">"Value"</span>]),</span>
+<span id="cb34-23"><a href="#cb34-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">t_tumour    =</span> <span class="fu">unname</span>(tr[<span class="st">"t-value"</span>]),</span>
+<span id="cb34-24"><a href="#cb34-24" aria-hidden="true" tabindex="-1"></a>    <span class="at">p_tumour    =</span> <span class="fu">unname</span>(tr[<span class="st">"p-value"</span>]),</span>
+<span id="cb34-25"><a href="#cb34-25" aria-hidden="true" tabindex="-1"></a>    <span class="at">row.names   =</span> <span class="cn">NULL</span></span>
+<span id="cb34-26"><a href="#cb34-26" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb34-27"><a href="#cb34-27" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb34-28"><a href="#cb34-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-29"><a href="#cb34-29" aria-hidden="true" tabindex="-1"></a>lmm_results_rm_df <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, lmm_results_rm)</span>
+<span id="cb34-30"><a href="#cb34-30" aria-hidden="true" tabindex="-1"></a>lmm_results_rm_df <span class="ot">&lt;-</span> lmm_results_rm_df[<span class="fu">order</span>(lmm_results_rm_df<span class="sc">$</span>p_tumour), ]</span>
+<span id="cb34-31"><a href="#cb34-31" aria-hidden="true" tabindex="-1"></a>lmm_results_rm_df<span class="sc">$</span>fdr_tumour <span class="ot">&lt;-</span> <span class="fu">p.adjust</span>(lmm_results_rm_df<span class="sc">$</span>p_tumour, <span class="at">method =</span> <span class="st">"BH"</span>)</span>
+<span id="cb34-32"><a href="#cb34-32" aria-hidden="true" tabindex="-1"></a>lmm_results_rm_df <span class="ot">&lt;-</span> lmm_results_rm_df[<span class="fu">order</span>(lmm_results_rm_df<span class="sc">$</span>fdr_tumour), ]</span>
+<span id="cb34-33"><a href="#cb34-33" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(lmm_results_rm_df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>           module beta_tumour   t_tumour     p_tumour   fdr_tumour
+15    MEturquoise  0.12986848  25.731591 8.290789e-44 1.326526e-42
+4         MEbrown -0.08827546 -10.419357 3.013142e-17 2.410513e-16
+14       MEsalmon  0.08152667   9.313724 6.346258e-15 2.907092e-14
+5          MEblue -0.08190421  -9.285750 7.267729e-15 2.907092e-14
+3         MEblack -0.07268682  -8.105322 2.173770e-12 6.956063e-12
+10        MEgreen  0.06186811   7.011515 3.863352e-10 1.030227e-09
+13      MEmagenta  0.06390064   6.561066 3.087470e-09 7.057074e-09
+12       MEpurple  0.05103625   5.720621 1.310823e-07 2.621646e-07
+2           MEred -0.03657023  -4.896967 4.144452e-06 7.367915e-06
+16         MEgrey  0.01880226   4.631463 1.190490e-05 1.904784e-05
+7          MEcyan  0.03789401   4.135647 7.812937e-05 1.136427e-04
+8  MEmidnightblue  0.02823412   3.595028 5.239141e-04 6.985522e-04
+9   MEgreenyellow  0.03205986   3.486869 7.512156e-04 9.245730e-04
+11       MEyellow -0.03204785  -3.394038 1.017681e-03 1.163063e-03
+1          MEpink  0.01686430   3.357437 1.145398e-03 1.221758e-03
+6           MEtan  0.01648731   1.535080 1.281961e-01 1.281961e-01</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>lmm_results_rm_df<span class="sc">$</span>module_clean <span class="ot">&lt;-</span> <span class="fu">substring</span>(lmm_results_rm_df<span class="sc">$</span>module, <span class="dv">3</span>)</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>tmat_rm <span class="ot">&lt;-</span> <span class="fu">matrix</span>(lmm_results_rm_df<span class="sc">$</span>t_tumour,</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>                  <span class="at">nrow =</span> <span class="fu">nrow</span>(lmm_results_rm_df),</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>                  <span class="at">dimnames =</span> <span class="fu">list</span>(lmm_results_rm_df<span class="sc">$</span>module_clean, <span class="st">"Tumour (t)"</span>))</span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>pheatmap<span class="sc">::</span><span class="fu">pheatmap</span>(</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>  tmat_rm,</span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">main =</span> <span class="st">"Module–tumour associations (LMM on pooled MEs; modules from within-subject network)"</span>,</span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">cluster_rows =</span> <span class="cn">FALSE</span>, <span class="at">cluster_cols =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">display_numbers =</span> <span class="fu">round</span>(tmat_rm, <span class="dv">2</span>)</span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-4-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="co"># MM + gene-level GS (gene-wise LMM |t|)</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>modNames_clean_rm <span class="ot">&lt;-</span> <span class="fu">substring</span>(<span class="fu">colnames</span>(MEs_rm), <span class="dv">3</span>)</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>geneModuleMembership_rm <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(<span class="fu">cor</span>(expr_for_ME_MM, MEs_rm, <span class="at">use =</span> <span class="st">"p"</span>))</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(geneModuleMembership_rm) <span class="ot">&lt;-</span> <span class="fu">paste0</span>(<span class="st">"MM"</span>, modNames_clean_rm)</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(geneModuleMembership_rm) <span class="ot">&lt;-</span> <span class="fu">colnames</span>(datExpr)</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>expr_forGS <span class="ot">&lt;-</span> expr_for_ME_MM</span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">identical</span>(<span class="fu">rownames</span>(expr_forGS), <span class="fu">rownames</span>(sampleTraits)))</span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>datGS_base <span class="ot">&lt;-</span> sampleTraits[<span class="fu">rownames</span>(expr_forGS), , drop <span class="ot">=</span> <span class="cn">FALSE</span>]</span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>genes <span class="ot">&lt;-</span> <span class="fu">colnames</span>(expr_forGS)</span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>gs_list <span class="ot">&lt;-</span> <span class="fu">lapply</span>(<span class="fu">seq_along</span>(genes), <span class="cf">function</span>(i) {</span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>  datGS_base<span class="sc">$</span>y <span class="ot">&lt;-</span> expr_forGS[, i]</span>
+<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a>  fit <span class="ot">&lt;-</span> <span class="fu">lme</span>(</span>
+<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>    y <span class="sc">~</span> tumour <span class="sc">+</span> Age <span class="sc">+</span> Gender,</span>
+<span id="cb37-18"><a href="#cb37-18" aria-hidden="true" tabindex="-1"></a>    <span class="at">random    =</span> <span class="sc">~</span> <span class="dv">1</span> <span class="sc">|</span> patient_id,</span>
+<span id="cb37-19"><a href="#cb37-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">data      =</span> datGS_base,</span>
+<span id="cb37-20"><a href="#cb37-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">na.action =</span> na.omit,</span>
+<span id="cb37-21"><a href="#cb37-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">method    =</span> <span class="st">"REML"</span>,</span>
+<span id="cb37-22"><a href="#cb37-22" aria-hidden="true" tabindex="-1"></a>    <span class="at">control   =</span> ctrl_lme</span>
+<span id="cb37-23"><a href="#cb37-23" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb37-24"><a href="#cb37-24" aria-hidden="true" tabindex="-1"></a>  sm <span class="ot">&lt;-</span> <span class="fu">summary</span>(fit)</span>
+<span id="cb37-25"><a href="#cb37-25" aria-hidden="true" tabindex="-1"></a>  t_tumour <span class="ot">&lt;-</span> sm<span class="sc">$</span>tTable[<span class="st">"tumour"</span>, <span class="st">"t-value"</span>]</span>
+<span id="cb37-26"><a href="#cb37-26" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">gene =</span> genes[i], <span class="at">GS =</span> <span class="fu">abs</span>(t_tumour), <span class="at">row.names =</span> <span class="cn">NULL</span>)</span>
+<span id="cb37-27"><a href="#cb37-27" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb37-28"><a href="#cb37-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-29"><a href="#cb37-29" aria-hidden="true" tabindex="-1"></a>geneGS <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, gs_list)</span>
+<span id="cb37-30"><a href="#cb37-30" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(geneGS) <span class="ot">&lt;-</span> geneGS<span class="sc">$</span>gene</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Intramodular connectivity + hub lists</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">colnames</span>(datExpr_within)))</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">ncol</span>(datExpr_within) <span class="sc">==</span> <span class="fu">length</span>(moduleColors_rm))</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>moduleColors_aligned <span class="ot">&lt;-</span> moduleColors_rm[<span class="fu">colnames</span>(datExpr_within)]</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>IMConn_rm <span class="ot">&lt;-</span> <span class="fu">intramodularConnectivity.fromExpr</span>(</span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>  datExpr_within,</span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">colors      =</span> moduleColors_aligned,</span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">power       =</span> softPower_rm,</span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">networkType =</span> <span class="st">"unsigned"</span></span>
+<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code> softConnectivity: FYI: connecitivty of genes with less than 62 valid samples will be returned as NA.
+ ..calculating connectivities.. </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>IMConn_rm_df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(IMConn_rm)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>IMConn_rm_df<span class="sc">$</span>gene <span class="ot">&lt;-</span> <span class="fu">rownames</span>(IMConn_rm_df)</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">all</span>(<span class="fu">grepl</span>(<span class="st">"^</span><span class="sc">\\</span><span class="st">d+$"</span>, IMConn_rm_df<span class="sc">$</span>gene))) IMConn_rm_df<span class="sc">$</span>gene <span class="ot">&lt;-</span> <span class="fu">colnames</span>(datExpr_within)</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>hubData_rm <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">gene   =</span> <span class="fu">colnames</span>(datExpr),</span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">module =</span> moduleColors_rm,</span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a>  geneModuleMembership_rm,</span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">GS     =</span> geneGS[<span class="fu">colnames</span>(datExpr), <span class="st">"GS"</span>],</span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">NULL</span></span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a>) <span class="sc">%&gt;%</span></span>
+<span id="cb40-12"><a href="#cb40-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(IMConn_rm_df[, <span class="fu">c</span>(<span class="st">"gene"</span>, <span class="st">"kWithin"</span>)], <span class="at">by =</span> <span class="st">"gene"</span>)</span>
+<span id="cb40-13"><a href="#cb40-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-14"><a href="#cb40-14" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">sum</span>(<span class="sc">!</span><span class="fu">is.na</span>(hubData_rm<span class="sc">$</span>kWithin)) <span class="sc">&gt;</span> <span class="dv">0</span>)</span>
+<span id="cb40-15"><a href="#cb40-15" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(hubData_rm<span class="sc">$</span>kWithin)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>    Min.  1st Qu.   Median     Mean  3rd Qu.     Max.     NA's 
+  0.0308   2.7032  11.3365  44.8646  50.3950 535.9272     3489 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>hubList_rm <span class="ot">&lt;-</span> hubData_rm <span class="sc">%&gt;%</span></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(module) <span class="sc">%&gt;%</span></span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(<span class="fu">desc</span>(kWithin)) <span class="sc">%&gt;%</span></span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice_head</span>(<span class="at">n =</span> <span class="dv">10</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>()</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(hubList_rm)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 160 × 20
+   gene    module  MMpink    MMred MMblack MMbrown   MMblue  MMtan MMcyan
+   &lt;chr&gt;   &lt;chr&gt;    &lt;dbl&gt;    &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;    &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;
+ 1 SCP2    black  -0.130   0.0478    0.874   0.736 -0.0222  -0.489 -0.271
+ 2 A1CF    black  -0.180  -0.0488    0.852   0.573 -0.0840  -0.467 -0.354
+ 3 DEPDC7  black  -0.101   0.138     0.871   0.766  0.133   -0.403 -0.368
+ 4 EHHADH  black  -0.0671  0.0849    0.825   0.702 -0.0894  -0.446 -0.330
+ 5 ACADM   black  -0.145   0.0293    0.826   0.667  0.0336  -0.475 -0.204
+ 6 DBT     black  -0.220  -0.0617    0.860   0.667 -0.115   -0.587 -0.242
+ 7 PIK3R1  black  -0.234  -0.00867   0.827   0.606  0.0156  -0.372 -0.305
+ 8 MUT     black  -0.168   0.0564    0.831   0.664  0.00657 -0.430 -0.238
+ 9 PUS10   black  -0.229  -0.0748    0.816   0.560 -0.0411  -0.502 -0.171
+10 FAM82A1 black  -0.105   0.0885    0.825   0.675  0.0736  -0.409 -0.345
+# ℹ 150 more rows
+# ℹ 11 more variables: MMmidnightblue &lt;dbl&gt;, MMgreenyellow &lt;dbl&gt;,
+#   MMgreen &lt;dbl&gt;, MMyellow &lt;dbl&gt;, MMpurple &lt;dbl&gt;, MMmagenta &lt;dbl&gt;,
+#   MMsalmon &lt;dbl&gt;, MMturquoise &lt;dbl&gt;, MMgrey &lt;dbl&gt;, GS &lt;dbl&gt;, kWithin &lt;dbl&gt;</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>out_tag <span class="ot">&lt;-</span> <span class="fu">format</span>(<span class="fu">Sys.Date</span>(), <span class="st">"%Y%m%d"</span>)</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a><span class="fu">save</span>(lmm_results_rm_df, MEs_pooled, MEs_within, MEs_rm, moduleColors_rm,</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>     geneModuleMembership_rm, geneGS, hubData_rm, hubList_rm,</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>     <span class="at">file =</span> <span class="fu">sprintf</span>(<span class="st">"WGCNA_pairaware_blockwise_GSE62043_%s.RData"</span>, out_tag),</span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>     <span class="at">compress =</span> <span class="st">"xz"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Compare pair-aware vs original WGCNA export (GSE62043)</span></span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(mclust)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: Paket 'mclust' wurde unter R Version 4.5.2 erstellt</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Package 'mclust' version 6.1.2
+Type 'citation("mclust")' for citing this R package in publications.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attache Paket: 'mclust'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Das folgende Objekt ist maskiert 'package:dplyr':
+
+    count</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>paired_file <span class="ot">&lt;-</span> <span class="st">"paired_wgcna_export_GSE62043_20260102.rds"</span></span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>paired_wgcna_export <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(paired_file)</span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a><span class="fu">message</span>(<span class="st">"Loaded original WGCNA export: "</span>, paired_file)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Loaded original WGCNA export: paired_wgcna_export_GSE62043_20260102.rds</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>moduleColors_wgcna <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>moduleColors</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>softPower_wgcna <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>softPower)) paired_wgcna_export<span class="sc">$</span>softPower <span class="cf">else</span> <span class="dv">7</span></span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>lmm_results_wgcna <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>lmm_results</span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>moduleColors_pairaware <span class="ot">&lt;-</span> moduleColors_rm</span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>softPower_pairaware <span class="ot">&lt;-</span> softPower_rm</span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-8"><a href="#cb52-8" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">is.null</span>(<span class="fu">names</span>(moduleColors_pairaware))) <span class="fu">names</span>(moduleColors_pairaware) <span class="ot">&lt;-</span> <span class="fu">colnames</span>(datExpr)</span>
+<span id="cb52-9"><a href="#cb52-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-10"><a href="#cb52-10" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">is.null</span>(<span class="fu">names</span>(moduleColors_wgcna))) {</span>
+<span id="cb52-11"><a href="#cb52-11" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>genes)) {</span>
+<span id="cb52-12"><a href="#cb52-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">names</span>(moduleColors_wgcna) <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>genes</span>
+<span id="cb52-13"><a href="#cb52-13" aria-hidden="true" tabindex="-1"></a>  } <span class="cf">else</span> <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>miRNAs)) {</span>
+<span id="cb52-14"><a href="#cb52-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">names</span>(moduleColors_wgcna) <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>miRNAs</span>
+<span id="cb52-15"><a href="#cb52-15" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb52-16"><a href="#cb52-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb52-17"><a href="#cb52-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-18"><a href="#cb52-18" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">names</span>(moduleColors_wgcna)))</span>
+<span id="cb52-19"><a href="#cb52-19" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">names</span>(moduleColors_pairaware)))</span>
+<span id="cb52-20"><a href="#cb52-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-21"><a href="#cb52-21" aria-hidden="true" tabindex="-1"></a>common <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">names</span>(moduleColors_wgcna), <span class="fu">names</span>(moduleColors_pairaware))</span>
+<span id="cb52-22"><a href="#cb52-22" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">length</span>(common) <span class="sc">&gt;</span> <span class="dv">0</span>)</span>
+<span id="cb52-23"><a href="#cb52-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-24"><a href="#cb52-24" aria-hidden="true" tabindex="-1"></a>mw_comp <span class="ot">&lt;-</span> moduleColors_wgcna[common]</span>
+<span id="cb52-25"><a href="#cb52-25" aria-hidden="true" tabindex="-1"></a>mp_comp <span class="ot">&lt;-</span> moduleColors_pairaware[common]</span>
+<span id="cb52-26"><a href="#cb52-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-27"><a href="#cb52-27" aria-hidden="true" tabindex="-1"></a>keep_nogrey <span class="ot">&lt;-</span> (mw_comp <span class="sc">!=</span> <span class="st">"grey"</span>) <span class="sc">&amp;</span> (mp_comp <span class="sc">!=</span> <span class="st">"grey"</span>) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(mw_comp) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(mp_comp)</span>
+<span id="cb52-28"><a href="#cb52-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-29"><a href="#cb52-29" aria-hidden="true" tabindex="-1"></a>tab <span class="ot">&lt;-</span> <span class="fu">table</span>(<span class="at">WGCNA_Original =</span> mw_comp, <span class="at">PairAware =</span> mp_comp)</span>
+<span id="cb52-30"><a href="#cb52-30" aria-hidden="true" tabindex="-1"></a>tab_counts <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(tab)</span>
+<span id="cb52-31"><a href="#cb52-31" aria-hidden="true" tabindex="-1"></a>w_sizes <span class="ot">&lt;-</span> <span class="fu">rowSums</span>(tab_counts)</span>
+<span id="cb52-32"><a href="#cb52-32" aria-hidden="true" tabindex="-1"></a>p_sizes <span class="ot">&lt;-</span> <span class="fu">colSums</span>(tab_counts)</span>
+<span id="cb52-33"><a href="#cb52-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-34"><a href="#cb52-34" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(tab_counts) <span class="ot">&lt;-</span> <span class="fu">paste0</span>(<span class="fu">rownames</span>(tab_counts), <span class="st">" (n="</span>, w_sizes, <span class="st">")"</span>)</span>
+<span id="cb52-35"><a href="#cb52-35" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(tab_counts) <span class="ot">&lt;-</span> <span class="fu">paste0</span>(<span class="fu">colnames</span>(tab_counts), <span class="st">" (n="</span>, p_sizes, <span class="st">")"</span>)</span>
+<span id="cb52-36"><a href="#cb52-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-37"><a href="#cb52-37" aria-hidden="true" tabindex="-1"></a>pheatmap<span class="sc">::</span><span class="fu">pheatmap</span>(</span>
+<span id="cb52-38"><a href="#cb52-38" aria-hidden="true" tabindex="-1"></a>  tab_counts,</span>
+<span id="cb52-39"><a href="#cb52-39" aria-hidden="true" tabindex="-1"></a>  <span class="at">cluster_rows =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb52-40"><a href="#cb52-40" aria-hidden="true" tabindex="-1"></a>  <span class="at">cluster_cols =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb52-41"><a href="#cb52-41" aria-hidden="true" tabindex="-1"></a>  <span class="at">display_numbers =</span> tab,</span>
+<span id="cb52-42"><a href="#cb52-42" aria-hidden="true" tabindex="-1"></a>  <span class="at">number_format =</span> <span class="st">"%d"</span>,</span>
+<span id="cb52-43"><a href="#cb52-43" aria-hidden="true" tabindex="-1"></a>  <span class="at">fontsize_number =</span> <span class="dv">9</span>,</span>
+<span id="cb52-44"><a href="#cb52-44" aria-hidden="true" tabindex="-1"></a>  <span class="at">main =</span> <span class="st">"Module overlap: Original WGCNA vs Pair-aware (GSE62043)"</span></span>
+<span id="cb52-45"><a href="#cb52-45" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>ari_all <span class="ot">&lt;-</span> mclust<span class="sc">::</span><span class="fu">adjustedRandIndex</span>(<span class="fu">as.integer</span>(<span class="fu">factor</span>(mw_comp)), <span class="fu">as.integer</span>(<span class="fu">factor</span>(mp_comp)))</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>ari_nogrey <span class="ot">&lt;-</span> mclust<span class="sc">::</span><span class="fu">adjustedRandIndex</span>(<span class="fu">as.integer</span>(<span class="fu">factor</span>(mw_comp[keep_nogrey])), <span class="fu">as.integer</span>(<span class="fu">factor</span>(mp_comp[keep_nogrey])))</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"ARI (all genes)     ="</span>, ari_all, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>ARI (all genes)     = 0.1236691 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"ARI (excluding grey)="</span>, ari_nogrey, <span class="st">"</span><span class="sc">\n\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>ARI (excluding grey)= 0.3006409 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>lmm_results_rm_df<span class="sc">$</span>FDR <span class="ot">&lt;-</span> <span class="fu">p.adjust</span>(lmm_results_rm_df<span class="sc">$</span>p_tumour, <span class="at">method =</span> <span class="st">"BH"</span>)</span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>top_pair_me <span class="ot">&lt;-</span> lmm_results_rm_df<span class="sc">$</span>module[<span class="fu">order</span>(lmm_results_rm_df<span class="sc">$</span>FDR)][<span class="dv">1</span>]</span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>top_pair_module <span class="ot">&lt;-</span> <span class="fu">sub</span>(<span class="st">"^ME"</span>, <span class="st">""</span>, top_pair_me)</span>
+<span id="cb57-4"><a href="#cb57-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb57-5"><a href="#cb57-5" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(lmm_results_wgcna) <span class="sc">&amp;&amp;</span> <span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"module"</span>, <span class="st">"p_tumour"</span>) <span class="sc">%in%</span> <span class="fu">colnames</span>(lmm_results_wgcna))) {</span>
+<span id="cb57-6"><a href="#cb57-6" aria-hidden="true" tabindex="-1"></a>  lmm_results_wgcna<span class="sc">$</span>FDR <span class="ot">&lt;-</span> <span class="fu">p.adjust</span>(lmm_results_wgcna<span class="sc">$</span>p_tumour, <span class="at">method =</span> <span class="st">"BH"</span>)</span>
+<span id="cb57-7"><a href="#cb57-7" aria-hidden="true" tabindex="-1"></a>  top_w_me <span class="ot">&lt;-</span> lmm_results_wgcna<span class="sc">$</span>module[<span class="fu">order</span>(lmm_results_wgcna<span class="sc">$</span>FDR)][<span class="dv">1</span>]</span>
+<span id="cb57-8"><a href="#cb57-8" aria-hidden="true" tabindex="-1"></a>  top_w_module <span class="ot">&lt;-</span> <span class="fu">sub</span>(<span class="st">"^ME"</span>, <span class="st">""</span>, top_w_me)</span>
+<span id="cb57-9"><a href="#cb57-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb57-10"><a href="#cb57-10" aria-hidden="true" tabindex="-1"></a>  genes_pair_top <span class="ot">&lt;-</span> <span class="fu">names</span>(moduleColors_pairaware)[moduleColors_pairaware <span class="sc">==</span> top_pair_module]</span>
+<span id="cb57-11"><a href="#cb57-11" aria-hidden="true" tabindex="-1"></a>  genes_w_top <span class="ot">&lt;-</span> <span class="fu">names</span>(moduleColors_wgcna)[moduleColors_wgcna <span class="sc">==</span> top_w_module]</span>
+<span id="cb57-12"><a href="#cb57-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb57-13"><a href="#cb57-13" aria-hidden="true" tabindex="-1"></a>  jacc_top_vs_top <span class="ot">&lt;-</span> <span class="fu">length</span>(<span class="fu">intersect</span>(genes_pair_top, genes_w_top)) <span class="sc">/</span> <span class="fu">length</span>(<span class="fu">union</span>(genes_pair_top, genes_w_top))</span>
+<span id="cb57-14"><a href="#cb57-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb57-15"><a href="#cb57-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"Top Pair-aware module by FDR:"</span>, top_pair_module, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb57-16"><a href="#cb57-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"Top Original-WGCNA module by FDR:"</span>, top_w_module, <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb57-17"><a href="#cb57-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"Jaccard(top vs top) ="</span>, jacc_top_vs_top, <span class="st">"</span><span class="sc">\n\n</span><span class="st">"</span>)</span>
+<span id="cb57-18"><a href="#cb57-18" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> {</span>
+<span id="cb57-19"><a href="#cb57-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">message</span>(<span class="st">"Original export has no `lmm_results` with (module, p_tumour). Skipping top-vs-top Jaccard."</span>)</span>
+<span id="cb57-20"><a href="#cb57-20" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Top Pair-aware module by FDR: turquoise 
+Top Original-WGCNA module by FDR: green 
+Jaccard(top vs top) = 0.1617382 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>get_sets <span class="ot">&lt;-</span> <span class="cf">function</span>(colors_vec) {</span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>  cols <span class="ot">&lt;-</span> colors_vec[<span class="sc">!</span><span class="fu">is.na</span>(colors_vec) <span class="sc">&amp;</span> colors_vec <span class="sc">!=</span> <span class="st">"grey"</span>]</span>
+<span id="cb59-3"><a href="#cb59-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">split</span>(<span class="fu">names</span>(cols), cols)</span>
+<span id="cb59-4"><a href="#cb59-4" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb59-5"><a href="#cb59-5" aria-hidden="true" tabindex="-1"></a>sets_w <span class="ot">&lt;-</span> <span class="fu">get_sets</span>(moduleColors_wgcna)</span>
+<span id="cb59-6"><a href="#cb59-6" aria-hidden="true" tabindex="-1"></a>sets_p <span class="ot">&lt;-</span> <span class="fu">get_sets</span>(moduleColors_pairaware)</span>
+<span id="cb59-7"><a href="#cb59-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-8"><a href="#cb59-8" aria-hidden="true" tabindex="-1"></a>mods_w <span class="ot">&lt;-</span> <span class="fu">names</span>(sets_w)</span>
+<span id="cb59-9"><a href="#cb59-9" aria-hidden="true" tabindex="-1"></a>mods_p <span class="ot">&lt;-</span> <span class="fu">names</span>(sets_p)</span>
+<span id="cb59-10"><a href="#cb59-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-11"><a href="#cb59-11" aria-hidden="true" tabindex="-1"></a>jaccard <span class="ot">&lt;-</span> <span class="cf">function</span>(a, b) <span class="fu">length</span>(<span class="fu">intersect</span>(a, b)) <span class="sc">/</span> <span class="fu">length</span>(<span class="fu">union</span>(a, b))</span>
+<span id="cb59-12"><a href="#cb59-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-13"><a href="#cb59-13" aria-hidden="true" tabindex="-1"></a>J <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>, <span class="at">nrow =</span> <span class="fu">length</span>(mods_w), <span class="at">ncol =</span> <span class="fu">length</span>(mods_p), <span class="at">dimnames =</span> <span class="fu">list</span>(mods_w, mods_p))</span>
+<span id="cb59-14"><a href="#cb59-14" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_along</span>(mods_w)) {</span>
+<span id="cb59-15"><a href="#cb59-15" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (j <span class="cf">in</span> <span class="fu">seq_along</span>(mods_p)) {</span>
+<span id="cb59-16"><a href="#cb59-16" aria-hidden="true" tabindex="-1"></a>    J[i, j] <span class="ot">&lt;-</span> <span class="fu">jaccard</span>(sets_w[[i]], sets_p[[j]])</span>
+<span id="cb59-17"><a href="#cb59-17" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb59-18"><a href="#cb59-18" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb59-19"><a href="#cb59-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-20"><a href="#cb59-20" aria-hidden="true" tabindex="-1"></a>best_for_pair <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb59-21"><a href="#cb59-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">pairaware_module   =</span> mods_p,</span>
+<span id="cb59-22"><a href="#cb59-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">best_wgcna_module  =</span> <span class="fu">apply</span>(J, <span class="dv">2</span>, <span class="cf">function</span>(x) mods_w[<span class="fu">which.max</span>(x)]),</span>
+<span id="cb59-23"><a href="#cb59-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">jaccard            =</span> <span class="fu">apply</span>(J, <span class="dv">2</span>, max),</span>
+<span id="cb59-24"><a href="#cb59-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">NULL</span></span>
+<span id="cb59-25"><a href="#cb59-25" aria-hidden="true" tabindex="-1"></a>) <span class="sc">%&gt;%</span> <span class="fu">arrange</span>(<span class="fu">desc</span>(jaccard))</span>
+<span id="cb59-26"><a href="#cb59-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-27"><a href="#cb59-27" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"Best overlap matches (top 15):</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Best overlap matches (top 15):</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">head</span>(best_for_pair, <span class="dv">15</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   pairaware_module best_wgcna_module    jaccard
+1            purple            purple 0.49270073
+2            salmon              pink 0.44015444
+3       greenyellow       greenyellow 0.35877863
+4              blue         turquoise 0.35518158
+5            yellow            yellow 0.34236186
+6             brown             brown 0.34220221
+7               red               red 0.28480000
+8             green            yellow 0.28368018
+9         turquoise         turquoise 0.20540615
+10             pink              blue 0.14983535
+11             cyan              cyan 0.09178744
+12            black             brown 0.08932584
+13              tan         turquoise 0.02484113
+14          magenta             brown 0.01943574
+15     midnightblue              blue 0.01025057</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1</span>)</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>n_sub <span class="ot">&lt;-</span> <span class="fu">min</span>(<span class="dv">1000</span>, <span class="fu">length</span>(common))</span>
+<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>vars <span class="ot">&lt;-</span> <span class="fu">apply</span>(datExpr[, common, <span class="at">drop =</span> <span class="cn">FALSE</span>], <span class="dv">2</span>, var, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb64-4"><a href="#cb64-4" aria-hidden="true" tabindex="-1"></a>sub_genes <span class="ot">&lt;-</span> <span class="fu">names</span>(<span class="fu">sort</span>(vars, <span class="at">decreasing =</span> <span class="cn">TRUE</span>))[<span class="fu">seq_len</span>(n_sub)]</span>
+<span id="cb64-5"><a href="#cb64-5" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"TOM comparison subset size:"</span>, <span class="fu">length</span>(sub_genes), <span class="st">"genes</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TOM comparison subset size: 1000 genes</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>TOM_w_sub <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>({</span>
+<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">TOMsimilarityFromExpr</span>(</span>
+<span id="cb66-3"><a href="#cb66-3" aria-hidden="true" tabindex="-1"></a>    datExpr[, sub_genes, <span class="at">drop =</span> <span class="cn">FALSE</span>],</span>
+<span id="cb66-4"><a href="#cb66-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">power       =</span> softPower_wgcna,</span>
+<span id="cb66-5"><a href="#cb66-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">networkType =</span> <span class="st">"unsigned"</span>,</span>
+<span id="cb66-6"><a href="#cb66-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">TOMType     =</span> <span class="st">"unsigned"</span>,</span>
+<span id="cb66-7"><a href="#cb66-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">corType     =</span> <span class="st">"pearson"</span></span>
+<span id="cb66-8"><a href="#cb66-8" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb66-9"><a href="#cb66-9" aria-hidden="true" tabindex="-1"></a>}, <span class="at">error =</span> <span class="cf">function</span>(e) { <span class="fu">message</span>(<span class="st">"TOM_w_sub failed: "</span>, e<span class="sc">$</span>message); <span class="cn">NULL</span> })</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TOM calculation: adjacency..
+..will not use multithreading.
+ Fraction of slow calculations: 0.000000
+..connectivity..
+..matrix multiplication (system BLAS)..
+..normalization..
+..done.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>TOM_p_sub <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>({</span>
+<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">TOMsimilarityFromExpr</span>(</span>
+<span id="cb68-3"><a href="#cb68-3" aria-hidden="true" tabindex="-1"></a>    datExpr_within[, sub_genes, <span class="at">drop =</span> <span class="cn">FALSE</span>],</span>
+<span id="cb68-4"><a href="#cb68-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">power       =</span> softPower_pairaware,</span>
+<span id="cb68-5"><a href="#cb68-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">networkType =</span> <span class="st">"unsigned"</span>,</span>
+<span id="cb68-6"><a href="#cb68-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">TOMType     =</span> <span class="st">"unsigned"</span>,</span>
+<span id="cb68-7"><a href="#cb68-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">corType     =</span> <span class="st">"pearson"</span></span>
+<span id="cb68-8"><a href="#cb68-8" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb68-9"><a href="#cb68-9" aria-hidden="true" tabindex="-1"></a>}, <span class="at">error =</span> <span class="cf">function</span>(e) { <span class="fu">message</span>(<span class="st">"TOM_p_sub failed: "</span>, e<span class="sc">$</span>message); <span class="cn">NULL</span> })</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>TOM calculation: adjacency..
+..will not use multithreading.
+ Fraction of slow calculations: 0.000000
+..connectivity..
+..matrix multiplication (system BLAS)..
+..normalization..
+..done.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb70"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(TOM_w_sub) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">is.null</span>(TOM_p_sub)) {</span>
+<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>  v1 <span class="ot">&lt;-</span> TOM_w_sub[<span class="fu">upper.tri</span>(TOM_w_sub)]</span>
+<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a>  v2 <span class="ot">&lt;-</span> TOM_p_sub[<span class="fu">upper.tri</span>(TOM_p_sub)]</span>
+<span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb70-5"><a href="#cb70-5" aria-hidden="true" tabindex="-1"></a>  edge_cor <span class="ot">&lt;-</span> <span class="fu">cor.test</span>(v1, v2, <span class="at">method =</span> <span class="st">"spearman"</span>)</span>
+<span id="cb70-6"><a href="#cb70-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(edge_cor)</span>
+<span id="cb70-7"><a href="#cb70-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb70-8"><a href="#cb70-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plot</span>(v1, v2, <span class="at">pch =</span> <span class="dv">20</span>,</span>
+<span id="cb70-9"><a href="#cb70-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">xlab =</span> <span class="st">"Original WGCNA TOM (subset)"</span>,</span>
+<span id="cb70-10"><a href="#cb70-10" aria-hidden="true" tabindex="-1"></a>       <span class="at">ylab =</span> <span class="st">"Pair-aware TOM (subset)"</span>,</span>
+<span id="cb70-11"><a href="#cb70-11" aria-hidden="true" tabindex="-1"></a>       <span class="at">main =</span> <span class="st">"Edge-weight agreement (TOM on subset)"</span>)</span>
+<span id="cb70-12"><a href="#cb70-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb70-13"><a href="#cb70-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"Spearman rho (TOM subset) ="</span>, <span class="fu">unname</span>(edge_cor<span class="sc">$</span>estimate), <span class="st">" p ="</span>, edge_cor<span class="sc">$</span>p.value, <span class="st">"</span><span class="sc">\n\n</span><span class="st">"</span>)</span>
+<span id="cb70-14"><a href="#cb70-14" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> {</span>
+<span id="cb70-15"><a href="#cb70-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">message</span>(<span class="st">"Skipping TOM subset correlation because TOM computation failed (likely memory/NA issues)."</span>)</span>
+<span id="cb70-16"><a href="#cb70-16" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Spearman's rank correlation rho
+
+data:  v1 and v2
+S = 1.9514e+15, p-value &lt; 2.2e-16
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+      rho 
+0.9060525 </code></pre>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-7-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Spearman rho (TOM subset) = 0.9060525  p = 0 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"gene"</span>, <span class="st">"kWithin"</span>) <span class="sc">%in%</span> <span class="fu">colnames</span>(hubData_rm)))</span>
+<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb73-3"><a href="#cb73-3" aria-hidden="true" tabindex="-1"></a>k_wgcna <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb73-4"><a href="#cb73-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>hubData) <span class="sc">&amp;&amp;</span> (<span class="st">"kWithin"</span> <span class="sc">%in%</span> <span class="fu">colnames</span>(paired_wgcna_export<span class="sc">$</span>hubData))) {</span>
+<span id="cb73-5"><a href="#cb73-5" aria-hidden="true" tabindex="-1"></a>  hdw <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>hubData</span>
+<span id="cb73-6"><a href="#cb73-6" aria-hidden="true" tabindex="-1"></a>  gene_col <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="st">"gene"</span> <span class="sc">%in%</span> <span class="fu">colnames</span>(hdw)) <span class="st">"gene"</span> <span class="cf">else</span> <span class="cf">if</span> (<span class="st">"miRNA"</span> <span class="sc">%in%</span> <span class="fu">colnames</span>(hdw)) <span class="st">"miRNA"</span> <span class="cf">else</span> <span class="cn">NULL</span></span>
+<span id="cb73-7"><a href="#cb73-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(gene_col)) k_wgcna <span class="ot">&lt;-</span> <span class="fu">setNames</span>(hdw<span class="sc">$</span>kWithin, hdw[[gene_col]])</span>
+<span id="cb73-8"><a href="#cb73-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb73-9"><a href="#cb73-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb73-10"><a href="#cb73-10" aria-hidden="true" tabindex="-1"></a>datExpr_within <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(datExpr_within)</span>
+<span id="cb73-11"><a href="#cb73-11" aria-hidden="true" tabindex="-1"></a>colors_p <span class="ot">&lt;-</span> moduleColors_pairaware[<span class="fu">colnames</span>(datExpr_within)]</span>
+<span id="cb73-12"><a href="#cb73-12" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">length</span>(colors_p) <span class="sc">==</span> <span class="fu">ncol</span>(datExpr_within))</span>
+<span id="cb73-13"><a href="#cb73-13" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">anyNA</span>(colors_p))</span>
+<span id="cb73-14"><a href="#cb73-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb73-15"><a href="#cb73-15" aria-hidden="true" tabindex="-1"></a>IM_p <span class="ot">&lt;-</span> <span class="fu">intramodularConnectivity.fromExpr</span>(</span>
+<span id="cb73-16"><a href="#cb73-16" aria-hidden="true" tabindex="-1"></a>  datExpr_within,</span>
+<span id="cb73-17"><a href="#cb73-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">colors      =</span> colors_p,</span>
+<span id="cb73-18"><a href="#cb73-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">power       =</span> softPower_pairaware,</span>
+<span id="cb73-19"><a href="#cb73-19" aria-hidden="true" tabindex="-1"></a>  <span class="at">networkType =</span> <span class="st">"unsigned"</span></span>
+<span id="cb73-20"><a href="#cb73-20" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code> softConnectivity: FYI: connecitivty of genes with less than 62 valid samples will be returned as NA.
+ ..calculating connectivities.. </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>IMConn_rm_df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(IM_p)</span>
+<span id="cb75-2"><a href="#cb75-2" aria-hidden="true" tabindex="-1"></a>IMConn_rm_df<span class="sc">$</span>gene <span class="ot">&lt;-</span> <span class="fu">colnames</span>(datExpr_within)</span>
+<span id="cb75-3"><a href="#cb75-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-4"><a href="#cb75-4" aria-hidden="true" tabindex="-1"></a>hubData_rm<span class="sc">$</span>kWithin <span class="ot">&lt;-</span> IMConn_rm_df<span class="sc">$</span>kWithin[<span class="fu">match</span>(hubData_rm<span class="sc">$</span>gene, IMConn_rm_df<span class="sc">$</span>gene)]</span>
+<span id="cb75-5"><a href="#cb75-5" aria-hidden="true" tabindex="-1"></a>k_pair <span class="ot">&lt;-</span> <span class="fu">setNames</span>(hubData_rm<span class="sc">$</span>kWithin, hubData_rm<span class="sc">$</span>gene)</span>
+<span id="cb75-6"><a href="#cb75-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-7"><a href="#cb75-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">is.null</span>(k_wgcna)) {</span>
+<span id="cb75-8"><a href="#cb75-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">message</span>(<span class="st">"Original export has no hubData$kWithin; computing kWithin via intramodularConnectivity.fromExpr() ..."</span>)</span>
+<span id="cb75-9"><a href="#cb75-9" aria-hidden="true" tabindex="-1"></a>  IM_w <span class="ot">&lt;-</span> <span class="fu">intramodularConnectivity.fromExpr</span>(</span>
+<span id="cb75-10"><a href="#cb75-10" aria-hidden="true" tabindex="-1"></a>    datExpr,</span>
+<span id="cb75-11"><a href="#cb75-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">colors      =</span> moduleColors_wgcna[<span class="fu">colnames</span>(datExpr)],</span>
+<span id="cb75-12"><a href="#cb75-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">power       =</span> softPower_wgcna,</span>
+<span id="cb75-13"><a href="#cb75-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">networkType =</span> <span class="st">"unsigned"</span></span>
+<span id="cb75-14"><a href="#cb75-14" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb75-15"><a href="#cb75-15" aria-hidden="true" tabindex="-1"></a>  k_wgcna <span class="ot">&lt;-</span> <span class="fu">setNames</span>(IM_w<span class="sc">$</span>kWithin, <span class="fu">rownames</span>(IM_w))</span>
+<span id="cb75-16"><a href="#cb75-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb75-17"><a href="#cb75-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-18"><a href="#cb75-18" aria-hidden="true" tabindex="-1"></a>common_k <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">names</span>(k_wgcna), <span class="fu">names</span>(k_pair))</span>
+<span id="cb75-19"><a href="#cb75-19" aria-hidden="true" tabindex="-1"></a>common_k <span class="ot">&lt;-</span> <span class="fu">intersect</span>(common_k, common)</span>
+<span id="cb75-20"><a href="#cb75-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-21"><a href="#cb75-21" aria-hidden="true" tabindex="-1"></a>common_k <span class="ot">&lt;-</span> common_k[</span>
+<span id="cb75-22"><a href="#cb75-22" aria-hidden="true" tabindex="-1"></a>  moduleColors_wgcna[common_k] <span class="sc">!=</span> <span class="st">"grey"</span> <span class="sc">&amp;</span></span>
+<span id="cb75-23"><a href="#cb75-23" aria-hidden="true" tabindex="-1"></a>    moduleColors_pairaware[common_k] <span class="sc">!=</span> <span class="st">"grey"</span></span>
+<span id="cb75-24"><a href="#cb75-24" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb75-25"><a href="#cb75-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-26"><a href="#cb75-26" aria-hidden="true" tabindex="-1"></a>x <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(k_wgcna[common_k])</span>
+<span id="cb75-27"><a href="#cb75-27" aria-hidden="true" tabindex="-1"></a>y <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(k_pair[common_k])</span>
+<span id="cb75-28"><a href="#cb75-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-29"><a href="#cb75-29" aria-hidden="true" tabindex="-1"></a>ok <span class="ot">&lt;-</span> <span class="fu">is.finite</span>(x) <span class="sc">&amp;</span> <span class="fu">is.finite</span>(y)</span>
+<span id="cb75-30"><a href="#cb75-30" aria-hidden="true" tabindex="-1"></a>x <span class="ot">&lt;-</span> x[ok]; y <span class="ot">&lt;-</span> y[ok]</span>
+<span id="cb75-31"><a href="#cb75-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-32"><a href="#cb75-32" aria-hidden="true" tabindex="-1"></a>hub_cor <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb75-33"><a href="#cb75-33" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(x) <span class="sc">&gt;=</span> <span class="dv">3</span> <span class="sc">&amp;&amp;</span> <span class="fu">length</span>(<span class="fu">unique</span>(x)) <span class="sc">&gt;</span> <span class="dv">1</span> <span class="sc">&amp;&amp;</span> <span class="fu">length</span>(<span class="fu">unique</span>(y)) <span class="sc">&gt;</span> <span class="dv">1</span>) {</span>
+<span id="cb75-34"><a href="#cb75-34" aria-hidden="true" tabindex="-1"></a>  hub_cor <span class="ot">&lt;-</span> <span class="fu">cor.test</span>(x, y, <span class="at">method =</span> <span class="st">"spearman"</span>, <span class="at">exact =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb75-35"><a href="#cb75-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(hub_cor)</span>
+<span id="cb75-36"><a href="#cb75-36" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> {</span>
+<span id="cb75-37"><a href="#cb75-37" aria-hidden="true" tabindex="-1"></a>  <span class="fu">message</span>(<span class="st">"Hubness correlation skipped: not enough usable (finite, non-constant) observations."</span>)</span>
+<span id="cb75-38"><a href="#cb75-38" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Spearman's rank correlation rho
+
+data:  x and y
+S = 8.6892e+10, p-value &lt; 2.2e-16
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+      rho 
+0.4717063 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(k_wgcna[common_k], k_pair[common_k], <span class="at">pch =</span> <span class="dv">20</span>,</span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>     <span class="at">xlab =</span> <span class="st">"Original WGCNA hubness (kWithin)"</span>,</span>
+<span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>     <span class="at">ylab =</span> <span class="st">"Pair-aware hubness (kWithin)"</span>,</span>
+<span id="cb77-4"><a href="#cb77-4" aria-hidden="true" tabindex="-1"></a>     <span class="at">main =</span> <span class="st">"Hubness agreement (kWithin)"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-7-3.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="sourceCode cell-code" id="cb78"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a>topK <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">25</span>, <span class="dv">50</span>, <span class="dv">100</span>, <span class="dv">200</span>)</span>
+<span id="cb78-2"><a href="#cb78-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">Top-hub overlap by kWithin:</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+Top-hub overlap by kWithin:</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (K <span class="cf">in</span> topK) {</span>
+<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a>  K <span class="ot">&lt;-</span> <span class="fu">min</span>(K, <span class="fu">length</span>(common_k))</span>
+<span id="cb80-3"><a href="#cb80-3" aria-hidden="true" tabindex="-1"></a>  hubs_w <span class="ot">&lt;-</span> <span class="fu">names</span>(<span class="fu">sort</span>(k_wgcna[common_k], <span class="at">decreasing =</span> <span class="cn">TRUE</span>))[<span class="dv">1</span><span class="sc">:</span>K]</span>
+<span id="cb80-4"><a href="#cb80-4" aria-hidden="true" tabindex="-1"></a>  hubs_p <span class="ot">&lt;-</span> <span class="fu">names</span>(<span class="fu">sort</span>(k_pair[common_k],  <span class="at">decreasing =</span> <span class="cn">TRUE</span>))[<span class="dv">1</span><span class="sc">:</span>K]</span>
+<span id="cb80-5"><a href="#cb80-5" aria-hidden="true" tabindex="-1"></a>  ov <span class="ot">&lt;-</span> <span class="fu">length</span>(<span class="fu">intersect</span>(hubs_w, hubs_p))</span>
+<span id="cb80-6"><a href="#cb80-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="st">"K ="</span>, K, <span class="st">" overlap ="</span>, ov, <span class="st">" =&gt;"</span>, <span class="fu">round</span>(<span class="dv">100</span> <span class="sc">*</span> ov <span class="sc">/</span> K, <span class="dv">1</span>), <span class="st">"%</span><span class="sc">\n</span><span class="st">"</span>)</span>
+<span id="cb80-7"><a href="#cb80-7" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>K = 25  overlap = 0  =&gt; 0 %
+K = 50  overlap = 0  =&gt; 0 %
+K = 100  overlap = 15  =&gt; 15 %
+K = 200  overlap = 48  =&gt; 24 %</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb82"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(lmm_results_wgcna) <span class="sc">&amp;&amp;</span> <span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"module"</span>, <span class="st">"t_tumour"</span>) <span class="sc">%in%</span> <span class="fu">colnames</span>(lmm_results_wgcna))) {</span>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>  t_w <span class="ot">&lt;-</span> <span class="fu">setNames</span>(lmm_results_wgcna<span class="sc">$</span>t_tumour, <span class="fu">sub</span>(<span class="st">"^ME"</span>, <span class="st">""</span>, lmm_results_wgcna<span class="sc">$</span>module))</span>
+<span id="cb83-3"><a href="#cb83-3" aria-hidden="true" tabindex="-1"></a>  t_p <span class="ot">&lt;-</span> <span class="fu">setNames</span>(lmm_results_rm_df<span class="sc">$</span>t_tumour, <span class="fu">sub</span>(<span class="st">"^ME"</span>, <span class="st">""</span>, lmm_results_rm_df<span class="sc">$</span>module))</span>
+<span id="cb83-4"><a href="#cb83-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb83-5"><a href="#cb83-5" aria-hidden="true" tabindex="-1"></a>  comp_tp <span class="ot">&lt;-</span> best_for_pair <span class="sc">%&gt;%</span></span>
+<span id="cb83-6"><a href="#cb83-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">t_pair =</span> t_p[pairaware_module],</span>
+<span id="cb83-7"><a href="#cb83-7" aria-hidden="true" tabindex="-1"></a>           <span class="at">t_wgcna =</span> t_w[best_wgcna_module]) <span class="sc">%&gt;%</span></span>
+<span id="cb83-8"><a href="#cb83-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(t_pair) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(t_wgcna))</span>
+<span id="cb83-9"><a href="#cb83-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb83-10"><a href="#cb83-10" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">nrow</span>(comp_tp) <span class="sc">&gt;=</span> <span class="dv">3</span>) {</span>
+<span id="cb83-11"><a href="#cb83-11" aria-hidden="true" tabindex="-1"></a>    tp_cor <span class="ot">&lt;-</span> <span class="fu">cor.test</span>(comp_tp<span class="sc">$</span>t_wgcna, comp_tp<span class="sc">$</span>t_pair, <span class="at">method =</span> <span class="st">"spearman"</span>)</span>
+<span id="cb83-12"><a href="#cb83-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">print</span>(tp_cor)</span>
+<span id="cb83-13"><a href="#cb83-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb83-14"><a href="#cb83-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">plot</span>(comp_tp<span class="sc">$</span>t_wgcna, comp_tp<span class="sc">$</span>t_pair, <span class="at">pch =</span> <span class="dv">19</span>,</span>
+<span id="cb83-15"><a href="#cb83-15" aria-hidden="true" tabindex="-1"></a>         <span class="at">xlab =</span> <span class="st">"Original WGCNA tumour t (best-overlap matched module)"</span>,</span>
+<span id="cb83-16"><a href="#cb83-16" aria-hidden="true" tabindex="-1"></a>         <span class="at">ylab =</span> <span class="st">"Pair-aware tumour t"</span>,</span>
+<span id="cb83-17"><a href="#cb83-17" aria-hidden="true" tabindex="-1"></a>         <span class="at">main =</span> <span class="st">"Tumour association agreement (matched modules)"</span>)</span>
+<span id="cb83-18"><a href="#cb83-18" aria-hidden="true" tabindex="-1"></a>    <span class="fu">text</span>(comp_tp<span class="sc">$</span>t_wgcna, comp_tp<span class="sc">$</span>t_pair, <span class="at">labels =</span> comp_tp<span class="sc">$</span>pairaware_module, <span class="at">pos =</span> <span class="dv">3</span>, <span class="at">cex =</span> <span class="fl">0.6</span>)</span>
+<span id="cb83-19"><a href="#cb83-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb83-20"><a href="#cb83-20" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cat</span>(<span class="st">"Spearman rho (tumour t, matched modules) ="</span>, <span class="fu">unname</span>(tp_cor<span class="sc">$</span>estimate),</span>
+<span id="cb83-21"><a href="#cb83-21" aria-hidden="true" tabindex="-1"></a>        <span class="st">" p ="</span>, tp_cor<span class="sc">$</span>p.value, <span class="st">"</span><span class="sc">\n\n</span><span class="st">"</span>)</span>
+<span id="cb83-22"><a href="#cb83-22" aria-hidden="true" tabindex="-1"></a>  } <span class="cf">else</span> {</span>
+<span id="cb83-23"><a href="#cb83-23" aria-hidden="true" tabindex="-1"></a>    <span class="fu">message</span>(<span class="st">"Not enough matched modules with t-values to correlate."</span>)</span>
+<span id="cb83-24"><a href="#cb83-24" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb83-25"><a href="#cb83-25" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in cor.test.default(comp_tp$t_wgcna, comp_tp$t_pair, method =
+"spearman"): Kann exakten p-Wert bei Bindungen nicht berechnen</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Spearman's rank correlation rho
+
+data:  comp_tp$t_wgcna and comp_tp$t_pair
+S = 350.12, p-value = 0.1687
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+    rho 
+0.37479 </code></pre>
+</div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="Dataset2_pairaware_files/figure-html/unnamed-chunk-7-4.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Spearman rho (tumour t, matched modules) = 0.37479  p = 0.1686904 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb87"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a>comparison_export <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb87-2"><a href="#cb87-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">dataset =</span> <span class="st">"GSE62043"</span>,</span>
+<span id="cb87-3"><a href="#cb87-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">files =</span> <span class="fu">list</span>(<span class="at">original_export =</span> paired_file),</span>
+<span id="cb87-4"><a href="#cb87-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">n_common_genes =</span> <span class="fu">length</span>(common),</span>
+<span id="cb87-5"><a href="#cb87-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">ARI_all =</span> ari_all,</span>
+<span id="cb87-6"><a href="#cb87-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">ARI_noGrey =</span> ari_nogrey,</span>
+<span id="cb87-7"><a href="#cb87-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">overlap_table =</span> tab,</span>
+<span id="cb87-8"><a href="#cb87-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">best_matches_by_jaccard =</span> best_for_pair,</span>
+<span id="cb87-9"><a href="#cb87-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">kWithin_spearman =</span> hub_cor</span>
+<span id="cb87-10"><a href="#cb87-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb87-11"><a href="#cb87-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb87-12"><a href="#cb87-12" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(</span>
+<span id="cb87-13"><a href="#cb87-13" aria-hidden="true" tabindex="-1"></a>  comparison_export,</span>
+<span id="cb87-14"><a href="#cb87-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="fu">sprintf</span>(<span class="st">"COMPARE_pairaware_vs_originalWGCNA_GSE62043_%s.rds"</span>, <span class="fu">format</span>(<span class="fu">Sys.Date</span>(), <span class="st">"%Y%m%d"</span>))</span>
+<span id="cb87-15"><a href="#cb87-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb87-16"><a href="#cb87-16" aria-hidden="true" tabindex="-1"></a><span class="fu">message</span>(<span class="st">"Saved comparison RDS."</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Saved comparison RDS.</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb89"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb89-1"><a href="#cb89-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Top 10 hubs in turquoise module (pair-aware)</span></span>
+<span id="cb89-2"><a href="#cb89-2" aria-hidden="true" tabindex="-1"></a>targetModule <span class="ot">&lt;-</span> <span class="st">"turquoise"</span></span>
+<span id="cb89-3"><a href="#cb89-3" aria-hidden="true" tabindex="-1"></a>mm_col <span class="ot">&lt;-</span> <span class="fu">paste0</span>(<span class="st">"MM"</span>, targetModule)</span>
+<span id="cb89-4"><a href="#cb89-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb89-5"><a href="#cb89-5" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">exists</span>(<span class="st">"hubData_rm"</span>))</span>
+<span id="cb89-6"><a href="#cb89-6" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(mm_col <span class="sc">%in%</span> <span class="fu">colnames</span>(hubData_rm))</span>
+<span id="cb89-7"><a href="#cb89-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb89-8"><a href="#cb89-8" aria-hidden="true" tabindex="-1"></a>top10_turquoise_kWithin <span class="ot">&lt;-</span> hubData_rm <span class="sc">%&gt;%</span></span>
+<span id="cb89-9"><a href="#cb89-9" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">filter</span>(module <span class="sc">==</span> targetModule) <span class="sc">%&gt;%</span></span>
+<span id="cb89-10"><a href="#cb89-10" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">filter</span>(<span class="fu">is.finite</span>(kWithin)) <span class="sc">%&gt;%</span></span>
+<span id="cb89-11"><a href="#cb89-11" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">arrange</span>(dplyr<span class="sc">::</span><span class="fu">desc</span>(kWithin)) <span class="sc">%&gt;%</span></span>
+<span id="cb89-12"><a href="#cb89-12" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">transmute</span>(</span>
+<span id="cb89-13"><a href="#cb89-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">miRNA   =</span> gene,</span>
+<span id="cb89-14"><a href="#cb89-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">module  =</span> module,</span>
+<span id="cb89-15"><a href="#cb89-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">kWithin =</span> kWithin,</span>
+<span id="cb89-16"><a href="#cb89-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">MM      =</span> .data[[mm_col]],</span>
+<span id="cb89-17"><a href="#cb89-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">GS      =</span> GS</span>
+<span id="cb89-18"><a href="#cb89-18" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb89-19"><a href="#cb89-19" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">slice_head</span>(<span class="at">n =</span> <span class="dv">10</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb89-20"><a href="#cb89-20" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(</span>
+<span id="cb89-21"><a href="#cb89-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">kWithin =</span> <span class="fu">round</span>(kWithin, <span class="dv">3</span>),</span>
+<span id="cb89-22"><a href="#cb89-22" aria-hidden="true" tabindex="-1"></a>    <span class="at">MM      =</span> <span class="fu">round</span>(MM, <span class="dv">3</span>),</span>
+<span id="cb89-23"><a href="#cb89-23" aria-hidden="true" tabindex="-1"></a>    <span class="at">GS      =</span> <span class="fu">round</span>(GS, <span class="dv">3</span>)</span>
+<span id="cb89-24"><a href="#cb89-24" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb89-25"><a href="#cb89-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb89-26"><a href="#cb89-26" aria-hidden="true" tabindex="-1"></a>top10_turquoise_kWithin</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>      miRNA    module kWithin     MM     GS
+1     STAB2 turquoise 535.927 -0.885 33.327
+2      ECM1 turquoise 535.443 -0.906 28.033
+3     PTH1R turquoise 535.125 -0.903 23.435
+4       CFP turquoise 535.078 -0.894 30.552
+5  DNASE1L3 turquoise 534.278 -0.917 29.370
+6      OIT3 turquoise 531.608 -0.922 31.464
+7     CCNB1 turquoise 531.344  0.914 20.121
+8     CRHBP turquoise 530.245 -0.909 34.326
+9     PDE2A turquoise 529.947 -0.913 21.106
+10    MARCO turquoise 520.633 -0.847 37.470</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb91"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb91-1"><a href="#cb91-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Module sizes (pair-aware)</span></span>
+<span id="cb91-2"><a href="#cb91-2" aria-hidden="true" tabindex="-1"></a>mod_sizes <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">table</span>(moduleColors_pairaware), <span class="at">decreasing =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb91-3"><a href="#cb91-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb91-4"><a href="#cb91-4" aria-hidden="true" tabindex="-1"></a>modules_df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb91-5"><a href="#cb91-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">Module =</span> <span class="fu">names</span>(mod_sizes),</span>
+<span id="cb91-6"><a href="#cb91-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">Number_of_Genes =</span> <span class="fu">as.integer</span>(mod_sizes),</span>
+<span id="cb91-7"><a href="#cb91-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">Relative_Amount =</span> <span class="fu">round</span>(<span class="dv">100</span> <span class="sc">*</span> <span class="fu">as.integer</span>(mod_sizes) <span class="sc">/</span> <span class="fu">length</span>(moduleColors_pairaware), <span class="dv">1</span>),</span>
+<span id="cb91-8"><a href="#cb91-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">NULL</span></span>
+<span id="cb91-9"><a href="#cb91-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb91-10"><a href="#cb91-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb91-11"><a href="#cb91-11" aria-hidden="true" tabindex="-1"></a>modules_df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>         Module Number_of_Genes Relative_Amount
+1     turquoise            5414            27.6
+2          grey            3489            17.8
+3          blue            2749            14.0
+4         brown            1967            10.0
+5        yellow            1263             6.4
+6         green            1129             5.8
+7           red            1113             5.7
+8         black             627             3.2
+9          pink             447             2.3
+10      magenta             314             1.6
+11       purple             249             1.3
+12  greenyellow             225             1.1
+13          tan             177             0.9
+14       salmon             175             0.9
+15         cyan             131             0.7
+16 midnightblue             126             0.6</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb93"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb93-1"><a href="#cb93-1" aria-hidden="true" tabindex="-1"></a><span class="co"># kWithinNorm + top-hub overlap (original vs pair-aware)</span></span>
+<span id="cb93-2"><a href="#cb93-2" aria-hidden="true" tabindex="-1"></a><span class="fu">suppressPackageStartupMessages</span>(<span class="fu">library</span>(dplyr))</span>
+<span id="cb93-3"><a href="#cb93-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-4"><a href="#cb93-4" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">exists</span>(<span class="st">"hubData_rm"</span>))</span>
+<span id="cb93-5"><a href="#cb93-5" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">all</span>(<span class="fu">c</span>(<span class="st">"gene"</span>, <span class="st">"module"</span>, <span class="st">"kWithin"</span>) <span class="sc">%in%</span> <span class="fu">colnames</span>(hubData_rm)))</span>
+<span id="cb93-6"><a href="#cb93-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-7"><a href="#cb93-7" aria-hidden="true" tabindex="-1"></a>moduleColors_pairaware <span class="ot">&lt;-</span> moduleColors_rm</span>
+<span id="cb93-8"><a href="#cb93-8" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">is.null</span>(<span class="fu">names</span>(moduleColors_pairaware))) <span class="fu">names</span>(moduleColors_pairaware) <span class="ot">&lt;-</span> <span class="fu">colnames</span>(datExpr)</span>
+<span id="cb93-9"><a href="#cb93-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-10"><a href="#cb93-10" aria-hidden="true" tabindex="-1"></a>modSize_pair <span class="ot">&lt;-</span> <span class="fu">table</span>(moduleColors_pairaware)</span>
+<span id="cb93-11"><a href="#cb93-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-12"><a href="#cb93-12" aria-hidden="true" tabindex="-1"></a>kw_pair <span class="ot">&lt;-</span> hubData_rm <span class="sc">%&gt;%</span></span>
+<span id="cb93-13"><a href="#cb93-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">transmute</span>(</span>
+<span id="cb93-14"><a href="#cb93-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">gene        =</span> gene,</span>
+<span id="cb93-15"><a href="#cb93-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">module      =</span> module,</span>
+<span id="cb93-16"><a href="#cb93-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">kWithin     =</span> <span class="fu">as.numeric</span>(kWithin),</span>
+<span id="cb93-17"><a href="#cb93-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">moduleSize  =</span> <span class="fu">as.integer</span>(modSize_pair[module]),</span>
+<span id="cb93-18"><a href="#cb93-18" aria-hidden="true" tabindex="-1"></a>    <span class="at">kWithinNorm =</span> kWithin <span class="sc">/</span> <span class="fu">pmax</span>(moduleSize <span class="sc">-</span> <span class="dv">1</span>L, <span class="dv">1</span>L)</span>
+<span id="cb93-19"><a href="#cb93-19" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb93-20"><a href="#cb93-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(module <span class="sc">!=</span> <span class="st">"grey"</span>, moduleSize <span class="sc">&gt;=</span> <span class="dv">2</span>, <span class="fu">is.finite</span>(kWithinNorm)) <span class="sc">%&gt;%</span></span>
+<span id="cb93-21"><a href="#cb93-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(gene, <span class="at">.keep_all =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb93-22"><a href="#cb93-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-23"><a href="#cb93-23" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">exists</span>(<span class="st">"paired_wgcna_export"</span>))</span>
+<span id="cb93-24"><a href="#cb93-24" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>moduleColors))</span>
+<span id="cb93-25"><a href="#cb93-25" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>hubData))</span>
+<span id="cb93-26"><a href="#cb93-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-27"><a href="#cb93-27" aria-hidden="true" tabindex="-1"></a>moduleColors_wgcna <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>moduleColors</span>
+<span id="cb93-28"><a href="#cb93-28" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">is.null</span>(<span class="fu">names</span>(moduleColors_wgcna))) {</span>
+<span id="cb93-29"><a href="#cb93-29" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>genes))  <span class="fu">names</span>(moduleColors_wgcna) <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>genes</span>
+<span id="cb93-30"><a href="#cb93-30" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(paired_wgcna_export<span class="sc">$</span>miRNAs)) <span class="fu">names</span>(moduleColors_wgcna) <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>miRNAs</span>
+<span id="cb93-31"><a href="#cb93-31" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb93-32"><a href="#cb93-32" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">names</span>(moduleColors_wgcna)))</span>
+<span id="cb93-33"><a href="#cb93-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-34"><a href="#cb93-34" aria-hidden="true" tabindex="-1"></a>modSize_orig <span class="ot">&lt;-</span> <span class="fu">table</span>(moduleColors_wgcna)</span>
+<span id="cb93-35"><a href="#cb93-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-36"><a href="#cb93-36" aria-hidden="true" tabindex="-1"></a>hdw <span class="ot">&lt;-</span> paired_wgcna_export<span class="sc">$</span>hubData</span>
+<span id="cb93-37"><a href="#cb93-37" aria-hidden="true" tabindex="-1"></a>gene_col <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="st">"gene"</span> <span class="sc">%in%</span> <span class="fu">names</span>(hdw)) <span class="st">"gene"</span> <span class="cf">else</span> <span class="cf">if</span> (<span class="st">"miRNA"</span> <span class="sc">%in%</span> <span class="fu">names</span>(hdw)) <span class="st">"miRNA"</span> <span class="cf">else</span> <span class="cn">NA_character_</span></span>
+<span id="cb93-38"><a href="#cb93-38" aria-hidden="true" tabindex="-1"></a>module_col <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="st">"module"</span> <span class="sc">%in%</span> <span class="fu">names</span>(hdw)) <span class="st">"module"</span> <span class="cf">else</span> <span class="cf">if</span> (<span class="st">"Module"</span> <span class="sc">%in%</span> <span class="fu">names</span>(hdw)) <span class="st">"Module"</span> <span class="cf">else</span> <span class="cn">NA_character_</span></span>
+<span id="cb93-39"><a href="#cb93-39" aria-hidden="true" tabindex="-1"></a>k_col <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="st">"kWithin"</span> <span class="sc">%in%</span> <span class="fu">names</span>(hdw)) <span class="st">"kWithin"</span> <span class="cf">else</span> <span class="cn">NA_character_</span></span>
+<span id="cb93-40"><a href="#cb93-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-41"><a href="#cb93-41" aria-hidden="true" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="sc">!</span><span class="fu">is.na</span>(gene_col), <span class="sc">!</span><span class="fu">is.na</span>(module_col), <span class="sc">!</span><span class="fu">is.na</span>(k_col))</span>
+<span id="cb93-42"><a href="#cb93-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-43"><a href="#cb93-43" aria-hidden="true" tabindex="-1"></a>kw_orig <span class="ot">&lt;-</span> hdw <span class="sc">%&gt;%</span></span>
+<span id="cb93-44"><a href="#cb93-44" aria-hidden="true" tabindex="-1"></a>  <span class="fu">transmute</span>(</span>
+<span id="cb93-45"><a href="#cb93-45" aria-hidden="true" tabindex="-1"></a>    <span class="at">gene        =</span> .data[[gene_col]],</span>
+<span id="cb93-46"><a href="#cb93-46" aria-hidden="true" tabindex="-1"></a>    <span class="at">module      =</span> .data[[module_col]],</span>
+<span id="cb93-47"><a href="#cb93-47" aria-hidden="true" tabindex="-1"></a>    <span class="at">kWithin     =</span> <span class="fu">as.numeric</span>(.data[[k_col]]),</span>
+<span id="cb93-48"><a href="#cb93-48" aria-hidden="true" tabindex="-1"></a>    <span class="at">moduleSize  =</span> <span class="fu">as.integer</span>(modSize_orig[module]),</span>
+<span id="cb93-49"><a href="#cb93-49" aria-hidden="true" tabindex="-1"></a>    <span class="at">kWithinNorm =</span> kWithin <span class="sc">/</span> <span class="fu">pmax</span>(moduleSize <span class="sc">-</span> <span class="dv">1</span>L, <span class="dv">1</span>L)</span>
+<span id="cb93-50"><a href="#cb93-50" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb93-51"><a href="#cb93-51" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(module <span class="sc">!=</span> <span class="st">"grey"</span>, moduleSize <span class="sc">&gt;=</span> <span class="dv">2</span>, <span class="fu">is.finite</span>(kWithinNorm)) <span class="sc">%&gt;%</span></span>
+<span id="cb93-52"><a href="#cb93-52" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(gene, <span class="at">.keep_all =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb93-53"><a href="#cb93-53" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-54"><a href="#cb93-54" aria-hidden="true" tabindex="-1"></a>common_genes2 <span class="ot">&lt;-</span> <span class="fu">intersect</span>(kw_orig<span class="sc">$</span>gene, kw_pair<span class="sc">$</span>gene)</span>
+<span id="cb93-55"><a href="#cb93-55" aria-hidden="true" tabindex="-1"></a>kwO <span class="ot">&lt;-</span> kw_orig <span class="sc">%&gt;%</span> <span class="fu">filter</span>(gene <span class="sc">%in%</span> common_genes2)</span>
+<span id="cb93-56"><a href="#cb93-56" aria-hidden="true" tabindex="-1"></a>kwP <span class="ot">&lt;-</span> kw_pair <span class="sc">%&gt;%</span> <span class="fu">filter</span>(gene <span class="sc">%in%</span> common_genes2)</span>
+<span id="cb93-57"><a href="#cb93-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-58"><a href="#cb93-58" aria-hidden="true" tabindex="-1"></a>get_top <span class="ot">&lt;-</span> <span class="cf">function</span>(df, K) df <span class="sc">%&gt;%</span> <span class="fu">arrange</span>(<span class="fu">desc</span>(kWithinNorm)) <span class="sc">%&gt;%</span> <span class="fu">slice_head</span>(<span class="at">n =</span> K) <span class="sc">%&gt;%</span> <span class="fu">pull</span>(gene)</span>
+<span id="cb93-59"><a href="#cb93-59" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-60"><a href="#cb93-60" aria-hidden="true" tabindex="-1"></a>topK <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">25</span>, <span class="dv">100</span>, <span class="dv">500</span>, <span class="dv">2000</span>)</span>
+<span id="cb93-61"><a href="#cb93-61" aria-hidden="true" tabindex="-1"></a>overlap_df <span class="ot">&lt;-</span> <span class="fu">bind_rows</span>(<span class="fu">lapply</span>(topK, <span class="cf">function</span>(K) {</span>
+<span id="cb93-62"><a href="#cb93-62" aria-hidden="true" tabindex="-1"></a>  K <span class="ot">&lt;-</span> <span class="fu">min</span>(K, <span class="fu">nrow</span>(kwO), <span class="fu">nrow</span>(kwP))</span>
+<span id="cb93-63"><a href="#cb93-63" aria-hidden="true" tabindex="-1"></a>  hubs_o <span class="ot">&lt;-</span> <span class="fu">get_top</span>(kwO, K)</span>
+<span id="cb93-64"><a href="#cb93-64" aria-hidden="true" tabindex="-1"></a>  hubs_p <span class="ot">&lt;-</span> <span class="fu">get_top</span>(kwP, K)</span>
+<span id="cb93-65"><a href="#cb93-65" aria-hidden="true" tabindex="-1"></a>  ov <span class="ot">&lt;-</span> <span class="fu">length</span>(<span class="fu">intersect</span>(hubs_o, hubs_p))</span>
+<span id="cb93-66"><a href="#cb93-66" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(</span>
+<span id="cb93-67"><a href="#cb93-67" aria-hidden="true" tabindex="-1"></a>    <span class="at">TopN =</span> K,</span>
+<span id="cb93-68"><a href="#cb93-68" aria-hidden="true" tabindex="-1"></a>    <span class="at">Absolute_Overlap =</span> ov,</span>
+<span id="cb93-69"><a href="#cb93-69" aria-hidden="true" tabindex="-1"></a>    <span class="at">Relative_Overlap =</span> <span class="fu">round</span>(<span class="dv">100</span> <span class="sc">*</span> ov <span class="sc">/</span> K, <span class="dv">1</span>)</span>
+<span id="cb93-70"><a href="#cb93-70" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb93-71"><a href="#cb93-71" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb93-72"><a href="#cb93-72" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb93-73"><a href="#cb93-73" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(overlap_df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 4 × 3
+   TopN Absolute_Overlap Relative_Overlap
+  &lt;dbl&gt;            &lt;int&gt;            &lt;dbl&gt;
+1    25                0              0  
+2   100               28             28  
+3   500              219             43.8
+4  2000             1129             56.5</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb95"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb95-1"><a href="#cb95-1" aria-hidden="true" tabindex="-1"></a>overlap_top25 <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">get_top</span>(kwO, <span class="dv">25</span>), <span class="fu">get_top</span>(kwP, <span class="dv">25</span>))</span>
+<span id="cb95-2"><a href="#cb95-2" aria-hidden="true" tabindex="-1"></a>overlap_top25</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>character(0)</code></pre>
+</div>
+</div>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

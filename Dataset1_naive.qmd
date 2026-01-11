@@ -1,0 +1,548 @@
+---
+title: "Dataset1_naive"
+format: html
+editor: visual
+---
+
+```{r}
+# Setup
+library(GEOquery)
+library(limma)
+library(WGCNA)
+library(iCheck)
+library(dplyr)
+library(pheatmap)
+library(mclust)
+
+options(stringsAsFactors = FALSE)
+disableWGCNAThreads()
+
+# Load data
+gse   <- getGEO("GSE45238", GSEMatrix = TRUE)
+eset  <- gse[[1]]
+
+expr  <- exprs(eset)
+pheno <- pData(eset)
+annot <- fData(eset)
+
+rownames(pheno) <- pheno$geo_accession
+pheno <- pheno[colnames(expr), ]
+stopifnot(identical(rownames(pheno), colnames(expr)))
+
+dim(expr); head(pheno); head(annot)
+
+# Probe filtering
+colnames(annot)
+unique(annot$miRNA_version)
+
+is_mature_v12 <- annot$TargetMatureVersion == 12
+is_control <- grepl("control|spike|U6|snoR", annot$SYMBOL, ignore.case = TRUE)
+
+keep_probes <- is_mature_v12 & !is_control
+expr  <- expr[keep_probes, ]
+annot <- annot[keep_probes, ]
+
+dim(expr)
+head(annot)
+
+# Normalization
+expr_log2 <- log2(expr + 1)
+expr_norm <- normalizeBetweenArrays(expr_log2, method = "quantile")
+
+rownames(expr_norm) <- rownames(expr)
+colnames(expr_norm) <- colnames(expr)
+
+# QC: PCA & sample clustering
+op <- par(mar = c(5, 4, 4, 10), xpd = TRUE)
+
+expr_t <- t(expr_norm)
+pca <- prcomp(expr_t, scale. = TRUE)
+
+sample_ids    <- colnames(expr_norm)
+highlight_ids <- c("GSM1099641", "GSM1099655")
+point_col     <- ifelse(sample_ids %in% highlight_ids, "red", "black")
+
+plot(pca$x[,1], pca$x[,2],
+     xlab = "PC1", ylab = "PC2",
+     pch = 19,
+     col = point_col,
+     main = "PCA after normalization")
+
+text(pca$x[,1], pca$x[,2],
+     labels = sample_ids,
+     pos = 3, cex = 0.6,
+     col = point_col)
+
+legend("topright",
+       inset = c(-0.55, 0),
+       legend = c("Other samples", "Outliers (to remove)"),
+       col    = c("black", "red"),
+       pch    = 19,
+       bty    = "n")
+
+par(op)
+
+sampleTree <- hclust(dist(expr_t), method = "average")
+plot(sampleTree, labels = colnames(expr_norm), cex = 0.6,
+     main = "Sample clustering")
+abline(h = 35, col = "red")
+
+pdf("SampleClustering.pdf", width = 14, height = 10)
+plot(sampleTree,
+     labels = colnames(expr_norm),
+     cex = 0.6,
+     main = "Sample clustering dendrogram")
+abline(h = 35, col = "red")
+dev.off()
+
+# Patient IDs & remove outlier pairs
+pheno$patient_id <- sub(".*_(\\d+)[NT]$", "\\1", pheno$title)
+pheno$patient_id <- as.character(pheno$patient_id)
+
+outlier_samples <- c("GSM1099641", "GSM1099655")
+outlier_patient_ids <- unique(pheno$patient_id[pheno$geo_accession %in% outlier_samples])
+
+keep_samples <- !pheno$patient_id %in% outlier_patient_ids
+expr_norm <- expr_norm[, keep_samples]
+pheno     <- pheno[keep_samples, ]
+
+pheno <- pheno[colnames(expr_norm), ]
+stopifnot(identical(rownames(pheno), colnames(expr_norm)))
+
+dim(expr_norm)
+table(pheno$patient_id)
+```
+
+```{r}
+# Network construction
+pheno$condition <- ifelse(grepl("T$", pheno$title), "tumor", "normal")
+datExpr <- t(expr_norm)
+
+dim(datExpr)
+gsg <- goodSamplesGenes(datExpr, verbose = 3)
+gsg$allOK
+
+# Soft-threshold power selection
+powers <- 1:20
+sft <- pickSoftThreshold(datExpr,
+                         powerVector = powers,
+                         networkType = "unsigned",
+                         verbose = 5)
+
+par(mfrow = c(1,2))
+plot(sft$fitIndices[,1],
+     -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     xlab = "Soft Threshold (power)",
+     ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n",
+     main = "Scale independence")
+text(sft$fitIndices[,1],
+     -sign(sft$fitIndices[,3]) * sft$fitIndices[,2],
+     labels = powers, cex = 0.8, col = "red")
+abline(h = 0.97, col = "red")
+
+plot(sft$fitIndices[,1],
+     sft$fitIndices[,5],
+     xlab = "Soft Threshold (power)",
+     ylab = "Mean Connectivity",
+     type = "n",
+     main = "Mean connectivity")
+text(sft$fitIndices[,1],
+     sft$fitIndices[,5],
+     labels = powers, cex = 0.8, col = "red")
+
+softPower <- 7
+softPower
+```
+
+```{r}
+# Adjacency, TOM, clustering
+adjacency <- adjacency(datExpr, power = softPower, type = "unsigned")
+TOM     <- TOMsimilarity(adjacency, TOMType = "unsigned")
+dissTOM <- 1 - TOM
+
+geneTree <- hclust(as.dist(dissTOM), method = "average")
+plot(geneTree,
+     main = "Clustering of miRNAs based on TOM (unsigned)",
+     xlab = "", sub = "", cex = 0.4)
+
+# Module detection + merging
+minModuleSize <- 30
+
+dynamicMods <- cutreeDynamic(
+  dendro = geneTree,
+  distM = dissTOM,
+  deepSplit = 2,
+  pamRespectsDendro = FALSE,
+  minClusterSize = minModuleSize
+)
+
+dynamicColors <- labels2colors(dynamicMods)
+table(dynamicColors)
+
+plotDendroAndColors(
+  geneTree,
+  dynamicColors,
+  "Dynamic Tree Cut",
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05,
+  main = "miRNA dendrogram and module colors"
+)
+
+moduleColors0 <- dynamicColors
+
+MElist <- moduleEigengenes(datExpr, colors = moduleColors0)
+MEs    <- orderMEs(MElist$eigengenes)
+
+MEDiss <- 1 - cor(MEs)
+METree <- hclust(as.dist(MEDiss), method = "average")
+
+mergeCutHeight <- 0.25
+
+plot(METree, main = "Clustering of module eigengenes (before merging)", xlab = "", sub = "")
+abline(h = mergeCutHeight, col = "red")
+
+merge <- mergeCloseModules(
+  datExpr,
+  moduleColors0,
+  cutHeight = mergeCutHeight,
+  verbose = 3
+)
+
+moduleColors <- merge$colors
+MEs          <- orderMEs(merge$newMEs)
+
+plotDendroAndColors(
+  geneTree,
+  cbind(moduleColors0, moduleColors),
+  c("Dynamic Tree Cut", "Merged modules"),
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05,
+  main = "Modules before and after merging"
+)
+
+table(moduleColors)
+```
+
+```{r}
+# Naive traits (treat all samples as independent)
+pheno$tumour <- ifelse(pheno$condition == "tumor", 1, 0)
+pheno$Age <- as.numeric(pheno[,"age:ch1"])
+pheno$Stage_num <- as.numeric(factor(pheno[,"Stage:ch1"], levels = c("I","II","III","IVA")))
+
+traits <- pheno[, c("tumour", "Age", "Stage_num")]
+rownames(traits) <- rownames(pheno)
+
+identical(rownames(traits), rownames(datExpr))
+
+# Module–trait correlations (naive)
+moduleTraitCor    <- cor(MEs, traits, use = "p")
+moduleTraitPvalue <- corPvalueStudent(moduleTraitCor, nrow(datExpr))
+
+moduleTraitCor
+moduleTraitPvalue
+
+textMatrix <- paste0(signif(moduleTraitCor, 2), "\n(",
+                     signif(moduleTraitPvalue, 1), ")")
+dim(textMatrix) <- dim(moduleTraitCor)
+
+labeledHeatmap(Matrix      = moduleTraitCor,
+               xLabels     = colnames(traits),
+               yLabels     = colnames(MEs),
+               ySymbols    = colnames(MEs),
+               colors      = blueWhiteRed(50),
+               textMatrix  = textMatrix,
+               main        = "Naive module–trait relationships\n(simple correlations)")
+```
+
+```{r}
+# Gene significance (naive)
+tumour_vec <- traits$tumour
+geneGS_vec <- as.vector(cor(datExpr, tumour_vec, use = "p"))
+names(geneGS_vec) <- colnames(datExpr)
+
+GS <- abs(geneGS_vec)
+geneGS <- data.frame(miRNA = names(GS), GS = GS, row.names = names(GS))
+
+# Hub table (MM + kWithin + GS)
+modNames <- substring(colnames(MEs), 3)
+
+geneModuleMembership <- as.data.frame(cor(datExpr, MEs, use = "p"))
+colnames(geneModuleMembership) <- paste0("MM", modNames)
+rownames(geneModuleMembership) <- colnames(datExpr)
+
+IMConn <- intramodularConnectivity(adjacency, moduleColors)
+IMConn_df <- as.data.frame(IMConn)
+IMConn_df$miRNA <- rownames(IMConn_df)
+
+hubData <- data.frame(
+  miRNA  = colnames(datExpr),
+  module = moduleColors,
+  geneModuleMembership,
+  GS     = geneGS[colnames(datExpr), "GS"],
+  row.names = NULL
+)
+
+hubData <- hubData %>%
+  left_join(IMConn_df[, c("miRNA", "kWithin")], by = "miRNA")
+
+hubList <- hubData %>%
+  group_by(module) %>%
+  arrange(desc(kWithin)) %>%
+  slice_head(n = 10) %>%
+  ungroup()
+
+hubList
+```
+
+```{r}
+# GS vs MM plot (turquoise)
+targetModule <- "turquoise"
+inMod <- hubData$module == targetModule
+
+plot(hubData$MMturquoise[inMod],
+     hubData$GS[inMod],
+     xlab = "Module membership (turquoise)",
+     ylab = "Gene significance for tumour (|cor|)",
+     main = paste("GS vs MM in", targetModule, "module (naive)"))
+abline(lm(GS ~ MMturquoise, data = hubData[inMod, ]), lty = 2)
+
+# Export module lists + top hubs
+moduleGenes <- split(hubData$miRNA, hubData$module)
+
+for (mod in names(moduleGenes)) {
+  write.table(moduleGenes[[mod]],
+              file = paste0("module_", mod, "_miRNAs_naive.txt"),
+              row.names = FALSE,
+              col.names = FALSE,
+              quote = FALSE)
+}
+
+for (mod in unique(hubList$module)) {
+  sub <- hubList[hubList$module == mod, ]
+  write.table(sub,
+              file = paste0("module_", mod, "_top10_hubs_naive.txt"),
+              row.names = FALSE,
+              quote = FALSE,
+              sep = "\t")
+}
+
+table(moduleColors)
+```
+
+```{r}
+# Compare paired WGCNA export vs naive
+paired <- readRDS("paired_wgcna_export.rds")
+
+moduleColors_paired <- paired$moduleColors
+TOM_paired          <- paired$TOM
+lmm_results_paired  <- paired$lmm_results
+
+moduleColors_naive <- moduleColors
+TOM_naive          <- TOM
+
+names(moduleColors_naive) <- colnames(datExpr)
+dimnames(TOM_naive) <- list(colnames(datExpr), colnames(datExpr))
+
+stopifnot(
+  setequal(names(moduleColors_paired), rownames(TOM_paired)),
+  all(rownames(TOM_paired) == colnames(TOM_paired)),
+  setequal(names(moduleColors_naive), rownames(TOM_naive)),
+  all(rownames(TOM_naive) == colnames(TOM_naive))
+)
+
+common <- intersect(rownames(TOM_paired), rownames(TOM_naive))
+cat("Common miRNAs:", length(common), "\n")
+
+mc_p <- moduleColors_paired[common]
+mc_n <- moduleColors_naive[common]
+
+keep <- !(mc_p %in% "grey" | mc_n %in% "grey")
+mc_p_ng <- mc_p[keep]
+mc_n_ng <- mc_n[keep]
+
+tab <- table(Paired = mc_p_ng, Naive = mc_n_ng)
+
+r_sizes <- rowSums(tab)
+c_sizes <- colSums(tab)
+rownames(tab) <- paste0(rownames(tab), " (n=", r_sizes, ")")
+colnames(tab) <- paste0(colnames(tab), " (n=", c_sizes, ")")
+
+pheatmap(tab,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         main = "Module overlap: Paired WGCNA vs Naive WGCNA")
+
+ari_pn <- adjustedRandIndex(as.integer(factor(mc_p_ng)),
+                            as.integer(factor(mc_n_ng)))
+cat("ARI (paired vs naive) =", ari_pn, "\n")
+
+top_paired_me <- lmm_results_paired$module[order(lmm_results_paired$p_tumour)][1]
+top_paired_module <- sub("^ME", "", top_paired_me)
+
+naive_tum_p <- moduleTraitPvalue[, "tumour"]
+naive_tum_fdr <- p.adjust(naive_tum_p, method = "BH")
+top_naive_me <- names(naive_tum_fdr)[order(naive_tum_fdr)][1]
+top_naive_module <- sub("^ME", "", top_naive_me)
+
+genes_p <- names(moduleColors_paired)[moduleColors_paired == top_paired_module]
+genes_n <- names(moduleColors_naive)[moduleColors_naive == top_naive_module]
+
+jacc_pn <- length(intersect(genes_p, genes_n)) / length(union(genes_p, genes_n))
+
+cat("Top paired module:", top_paired_module, "\n")
+cat("Top naive module :", top_naive_module, "\n")
+cat("Jaccard(top modules) =", jacc_pn, "\n")
+
+A1 <- TOM_paired[common, common]
+A2 <- TOM_naive[common, common]
+
+v1 <- A1[upper.tri(A1)]
+v2 <- A2[upper.tri(A2)]
+
+edge_cor <- cor.test(v1, v2, method = "spearman")
+print(edge_cor)
+
+plot(v1, v2, pch = 20,
+     xlab = "Paired WGCNA TOM edge weight",
+     ylab = "Naive WGCNA TOM edge weight",
+     main = "Edge-weight agreement (TOM)")
+
+k_p <- rowSums(A1) - diag(A1)
+k_n <- rowSums(A2) - diag(A2)
+
+hub_cor <- cor.test(k_p, k_n, method = "spearman")
+print(hub_cor)
+
+topK <- c(25, 50, 75, 100)
+for (K in topK) {
+  hubs_p <- names(sort(k_p, decreasing = TRUE))[1:K]
+  hubs_n <- names(sort(k_n, decreasing = TRUE))[1:K]
+  ov <- length(intersect(hubs_p, hubs_n))
+  cat("K =", K, "overlap =", ov, "=>", round(100 * ov / K, 1), "%\n")
+}
+```
+
+```{r}
+# Module sizes
+mod_sizes <- sort(table(moduleColors_naive), decreasing = TRUE)
+
+modules_df <- data.frame(
+  Module  = names(mod_sizes),
+  Number_of_Genes = as.integer(mod_sizes),
+  Relative_Amount = round(100 * as.integer(mod_sizes) / length(moduleColors_naive), 1),
+  row.names = NULL
+)
+
+modules_df
+```
+
+```{r}
+# Top 10 turquoise by GS
+top10_turquoise <- hubData %>%
+  filter(module == "turquoise") %>%
+  arrange(desc(GS)) %>%
+  transmute(
+    miRNA,
+    module,
+    kWithin = round(kWithin, 2),
+    MMturquoise = round(MMturquoise, 3),
+    GS = round(GS, 3)
+  ) %>%
+  slice_head(n = 10)
+
+top10_turquoise
+```
+
+```{r}
+# Paired-aware GS via limma (duplicateCorrelation)
+stopifnot(identical(colnames(expr_norm), rownames(pheno)))
+
+design <- model.matrix(~ tumour + Age + Stage_num, data = pheno)
+block  <- pheno$patient_id
+
+dupcor <- duplicateCorrelation(expr_norm, design = design, block = block)
+
+fit <- lmFit(expr_norm, design = design, block = block, correlation = dupcor$consensus)
+fit <- eBayes(fit)
+
+GS_paired <- abs(fit$t[, "tumour"])
+names(GS_paired) <- rownames(expr_norm)
+```
+
+```{r}
+# Normalised intramodular hub overlap (paired export vs naive)
+kWithin_normalised <- function(A, colors, drop_grey = TRUE) {
+  stopifnot(is.matrix(A), nrow(A) == ncol(A))
+  stopifnot(!is.null(rownames(A)))
+  stopifnot(!is.null(names(colors)))
+
+  common_genes <- intersect(rownames(A), names(colors))
+  A <- A[common_genes, common_genes, drop = FALSE]
+  colors <- colors[common_genes]
+
+  out_list <- lapply(split(names(colors), colors), function(genes) {
+    m <- length(genes)
+    if (m < 2) return(NULL)
+
+    subA <- A[genes, genes, drop = FALSE]
+    kWithin <- rowSums(subA, na.rm = TRUE) - diag(subA)
+    kWithinNorm <- kWithin / (m - 1)
+
+    data.frame(
+      gene = genes,
+      module = unique(colors[genes]),
+      moduleSize = m,
+      kWithin = as.numeric(kWithin),
+      kWithinNorm = as.numeric(kWithinNorm),
+      row.names = NULL
+    )
+  })
+
+  bind_rows(out_list)
+}
+
+A_paired <- if (!is.null(paired$adjacency)) paired$adjacency else paired$TOM
+A_naive  <- if (exists("adjacency")) adjacency else TOM
+
+if (is.null(rownames(A_paired)) && !is.null(names(paired$moduleColors))) {
+  dimnames(A_paired) <- list(names(paired$moduleColors), names(paired$moduleColors))
+}
+if (is.null(rownames(A_naive))) {
+  dimnames(A_naive) <- list(colnames(datExpr), colnames(datExpr))
+}
+
+col_p <- paired$moduleColors
+col_n <- moduleColors
+names(col_n) <- colnames(datExpr)
+
+common2 <- intersect(rownames(A_paired), rownames(A_naive))
+stopifnot(length(common2) > 10)
+
+A_p <- A_paired[common2, common2, drop = FALSE]
+A_n <- A_naive[common2, common2, drop = FALSE]
+col_p <- col_p[common2]
+col_n <- col_n[common2]
+
+kw_p <- kWithin_normalised(A_p, col_p, drop_grey = TRUE)
+kw_n <- kWithin_normalised(A_n, col_n, drop_grey = TRUE)
+
+get_top <- function(df, K) {
+  df %>% arrange(desc(kWithinNorm)) %>% slice_head(n = K) %>% pull(gene)
+}
+
+topK2 <- c(25, 50, 100, 500)
+for (K in topK2) {
+  hubs_p <- get_top(kw_p, K)
+  hubs_n <- get_top(kw_n, K)
+  ov <- length(intersect(hubs_p, hubs_n))
+  cat("Top", K, ": overlap =", ov, " (", round(100 * ov / K, 1), "%)\n", sep = "")
+}
+
+overlap_top25 <- intersect(get_top(kw_p, 25), get_top(kw_n, 25))
+overlap_top25
+```

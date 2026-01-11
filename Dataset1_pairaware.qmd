@@ -1,0 +1,643 @@
+---
+title: "Datset1_pairaware"
+format: html
+editor: visual
+---
+
+```{r}
+# Setup
+library(GEOquery)
+library(limma)
+library(WGCNA)
+library(iCheck)
+library(nlme)
+library(dplyr)
+
+options(stringsAsFactors = FALSE)
+disableWGCNAThreads()
+
+# Load data + align pheno to expression
+gse   <- getGEO("GSE45238", GSEMatrix = TRUE)
+eset  <- gse[[1]]
+
+expr  <- exprs(eset)
+pheno <- pData(eset)
+annot <- fData(eset)
+
+rownames(pheno) <- pheno$geo_accession
+pheno <- pheno[colnames(expr), ]
+stopifnot(identical(rownames(pheno), colnames(expr)))
+
+dim(expr); head(pheno); head(annot)
+
+# Probe filtering
+colnames(annot)
+unique(annot$miRNA_version)
+
+is_mature_v12 <- annot$TargetMatureVersion == 12
+is_control    <- grepl("control|spike|U6|snoR", annot$SYMBOL, ignore.case = TRUE)
+
+keep_probes <- is_mature_v12 & !is_control
+expr  <- expr[keep_probes, ]
+annot <- annot[keep_probes, ]
+
+dim(expr)
+head(annot)
+
+# Normalization
+expr_log2 <- log2(expr + 1)
+expr_norm <- normalizeBetweenArrays(expr_log2, method = "quantile")
+rownames(expr_norm) <- rownames(expr)
+colnames(expr_norm) <- colnames(expr)
+
+# QC: PCA + sample clustering
+op <- par(mar = c(5, 4, 4, 10), xpd = TRUE)
+
+expr_t <- t(expr_norm)
+pca <- prcomp(expr_t, scale. = TRUE)
+
+sample_ids    <- colnames(expr_norm)
+highlight_ids <- c("GSM1099641", "GSM1099655")
+point_col     <- ifelse(sample_ids %in% highlight_ids, "red", "black")
+
+plot(pca$x[,1], pca$x[,2],
+     xlab = "PC1", ylab = "PC2",
+     pch = 19, col = point_col,
+     main = "PCA after normalization")
+
+text(pca$x[,1], pca$x[,2],
+     labels = sample_ids,
+     pos = 3, cex = 0.6,
+     col = point_col)
+
+legend("topright",
+       inset = c(-0.55, 0),
+       legend = c("Other samples", "Outliers (to remove)"),
+       col    = c("black", "red"),
+       pch    = 19,
+       bty    = "n")
+
+par(op)
+
+sampleTree <- hclust(dist(expr_t), method = "average")
+plot(sampleTree, labels = colnames(expr_norm), cex = 0.6,
+     main = "Sample clustering")
+abline(h = 35, col = "red")
+
+pdf("SampleClustering.pdf", width = 14, height = 10)
+plot(sampleTree, labels = colnames(expr_norm), cex = 0.6,
+     main = "Sample clustering dendrogram")
+abline(h = 35, col = "red")
+dev.off()
+
+# Patient IDs + remove outlier pairs
+pheno$patient_id <- sub(".*_(\\d+)[NT]$", "\\1", pheno$title)
+pheno$patient_id <- as.character(pheno$patient_id)
+
+outlier_samples <- c("GSM1099641", "GSM1099655")
+outlier_patient_ids <- unique(pheno$patient_id[pheno$geo_accession %in% outlier_samples])
+
+keep_samples <- !pheno$patient_id %in% outlier_patient_ids
+expr_norm <- expr_norm[, keep_samples]
+pheno     <- pheno[keep_samples, ]
+
+dim(expr_norm)
+table(pheno$patient_id)
+
+```
+
+```{r}
+# Pooled expression matrix for pair-aware WGCNA
+pheno$condition <- ifelse(grepl("T$", pheno$title), "tumor", "normal")
+
+datExpr <- t(expr_norm)   # samples × miRNAs
+dim(datExpr)
+
+gsg <- goodSamplesGenes(datExpr, verbose = 3)
+gsg$allOK
+
+# Within-subject centering (rmcorr-like)
+stopifnot(identical(rownames(pheno), rownames(datExpr)))
+
+patient <- factor(pheno$patient_id)
+grp <- as.integer(patient)
+
+sum_by_patient <- rowsum(datExpr, group = grp)
+n_by_patient   <- as.vector(table(grp))
+mean_by_patient <- sweep(sum_by_patient, 1, n_by_patient, FUN = "/")
+sample_means    <- mean_by_patient[grp, ]
+
+datExpr_within <- datExpr - sample_means
+stopifnot(all(dim(datExpr_within) == dim(datExpr)))
+
+tapply(datExpr_within[, 1], patient, mean)
+```
+
+```{r}
+# Soft-threshold selection (within-subject; unsigned)
+powers <- 1:20
+sft_rm <- pickSoftThreshold(datExpr_within,
+                            powerVector = powers,
+                            networkType = "unsigned",
+                            verbose = 5)
+
+par(mfrow = c(1,2))
+plot(sft_rm$fitIndices[,1],
+     -sign(sft_rm$fitIndices[,3]) * sft_rm$fitIndices[,2],
+     xlab = "Soft Threshold (power)",
+     ylab = "Scale Free Topology Model Fit, signed R^2",
+     type = "n",
+     main = "Scale independence (within-subject)")
+text(sft_rm$fitIndices[,1],
+     -sign(sft_rm$fitIndices[,3]) * sft_rm$fitIndices[,2],
+     labels = powers, cex = 0.8, col = "red")
+abline(h = 0.9, col = "red")
+
+plot(sft_rm$fitIndices[,1],
+     sft_rm$fitIndices[,5],
+     xlab = "Soft Threshold (power)",
+     ylab = "Mean Connectivity",
+     type = "n",
+     main = "Mean connectivity (within-subject)")
+text(sft_rm$fitIndices[,1],
+     sft_rm$fitIndices[,5],
+     labels = powers, cex = 0.8, col = "red")
+
+softPower_rm <- 5
+softPower_rm
+```
+
+```{r}
+# Network + modules (within-subject; unsigned)
+adjacency_rm <- adjacency(datExpr_within, power = softPower_rm, type = "unsigned")
+TOM_rm     <- TOMsimilarity(adjacency_rm, TOMType = "unsigned")
+dissTOM_rm <- 1 - TOM_rm
+
+geneTree_rm <- hclust(as.dist(dissTOM_rm), method = "average")
+plot(geneTree_rm,
+     main = "Clustering of miRNAs based on TOM (within-subject)",
+     xlab = "", sub = "", cex = 0.4)
+
+minModuleSize <- 30
+dynamicMods_rm <- cutreeDynamic(
+  dendro = geneTree_rm,
+  distM = dissTOM_rm,
+  deepSplit = 2,
+  pamRespectsDendro = FALSE,
+  minClusterSize = minModuleSize
+)
+
+dynamicColors_rm <- labels2colors(dynamicMods_rm)
+table(dynamicColors_rm)
+
+plotDendroAndColors(
+  geneTree_rm,
+  dynamicColors_rm,
+  "Dynamic Tree Cut (within-subject)",
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05,
+  main = "miRNA dendrogram and module colors (within-subject)"
+)
+
+moduleColors0_rm <- dynamicColors_rm
+
+MElist_rm <- moduleEigengenes(datExpr, colors = moduleColors0_rm)
+MEs_rm    <- orderMEs(MElist_rm$eigengenes)
+
+MEDiss_rm <- 1 - cor(MEs_rm)
+METree_rm <- hclust(as.dist(MEDiss_rm), method = "average")
+
+mergeCutHeight <- 0.25
+
+plot(METree_rm,
+     main = "Clustering of module eigengenes (before merging)",
+     xlab = "", sub = "")
+abline(h = mergeCutHeight, col = "red")
+
+merge_rm <- mergeCloseModules(
+  datExpr,
+  moduleColors0_rm,
+  cutHeight = mergeCutHeight,
+  verbose = 3
+)
+
+moduleColors_rm <- merge_rm$colors
+MEs_rm          <- orderMEs(merge_rm$newMEs)
+
+plotDendroAndColors(
+  geneTree_rm,
+  cbind(moduleColors0_rm, moduleColors_rm),
+  c("Dynamic Tree Cut", "Merged modules"),
+  dendroLabels = FALSE,
+  hang = 0.03,
+  addGuide = TRUE,
+  guideHang = 0.05,
+  main = "Modules before and after merging (within-subject network)"
+)
+
+table(moduleColors_rm)
+```
+
+```{r}
+# Sample-level traits + LMM on module eigengenes
+stopifnot(identical(rownames(pheno), rownames(datExpr)))
+
+pheno$tumour    <- ifelse(pheno$condition == "tumor", 1, 0)
+pheno$Age       <- as.numeric(pheno[,"age:ch1"])
+pheno$Stage_num <- as.numeric(factor(pheno[,"Stage:ch1"], levels = c("I","II","III","IVA")))
+
+sampleTraits <- pheno[, c("patient_id", "tumour", "Age", "Stage_num")]
+rownames(sampleTraits) <- rownames(pheno)
+sampleTraits$patient_id <- factor(sampleTraits$patient_id)
+
+datLMM_rm <- cbind(sampleTraits[rownames(MEs_rm), ],
+                   as.data.frame(MEs_rm))
+
+modNames_rm <- colnames(MEs_rm)
+
+lmm_results_rm <- lapply(modNames_rm, function(mn) {
+  form <- as.formula(paste(mn, "~ tumour + Age + Stage_num"))
+  fit <- lme(form,
+             random = ~ 1 | patient_id,
+             data   = datLMM_rm,
+             na.action = na.omit,
+             method = "REML")
+  sm <- summary(fit)
+  tumour_row <- sm$tTable["tumour", ]
+  data.frame(
+    module      = mn,
+    beta_tumour = tumour_row["Value"],
+    t_tumour    = tumour_row["t-value"],
+    p_tumour    = tumour_row["p-value"],
+    row.names   = NULL
+  )
+})
+
+lmm_results_rm_df <- do.call(rbind, lmm_results_rm)
+lmm_results_rm_df[order(lmm_results_rm_df$p_tumour), ]
+
+lmm_results_rm_df$module_clean <- substring(lmm_results_rm_df$module, 3)
+
+tmat_rm <- matrix(lmm_results_rm_df$t_tumour,
+                  nrow = nrow(lmm_results_rm_df),
+                  dimnames = list(lmm_results_rm_df$module_clean, "Tumour (t)"))
+
+pheatmap::pheatmap(tmat_rm,
+                   main = "Module–tumour associations (within-subject network; LMM t-values)",
+                   cluster_rows = FALSE,
+                   cluster_cols = FALSE,
+                   display_numbers = round(tmat_rm, 2))
+```
+
+```{r}
+# Module membership (MM) on pooled expression
+modNames_clean_rm <- substring(colnames(MEs_rm), 3)
+
+geneModuleMembership_rm <- as.data.frame(cor(datExpr, MEs_rm, use = "p"))
+colnames(geneModuleMembership_rm) <- paste0("MM", modNames_clean_rm)
+rownames(geneModuleMembership_rm) <- colnames(datExpr)
+
+# Gene significance (GS) via per-miRNA LMM t-stat
+expr_forGS <- datExpr
+
+datGS <- cbind(sampleTraits[rownames(expr_forGS), ],
+               as.data.frame(expr_forGS))
+
+miRNAs <- colnames(expr_forGS)
+
+gs_list <- lapply(miRNAs, function(g) {
+  form <- as.formula(paste(g, "~ tumour + Age + Stage_num"))
+  fit  <- lme(form,
+              random = ~ 1 | patient_id,
+              data   = datGS,
+              na.action = na.omit,
+              method = "REML")
+  sm <- summary(fit)
+  t_tumour <- sm$tTable["tumour","t-value"]
+  data.frame(miRNA = g, GS = abs(t_tumour), row.names = NULL)
+})
+
+geneGS <- do.call(rbind, gs_list)
+rownames(geneGS) <- geneGS$miRNA
+head(geneGS)
+```
+
+```{r}
+# Hub overview + top hubs per module
+hubData_rm <- data.frame(
+  miRNA  = colnames(datExpr),
+  module = moduleColors_rm,
+  geneModuleMembership_rm,
+  GS     = geneGS[colnames(datExpr), "GS"],
+  row.names = NULL
+)
+
+IMConn_rm <- intramodularConnectivity(adjacency_rm, moduleColors_rm)
+IMConn_rm_df <- as.data.frame(IMConn_rm)
+IMConn_rm_df$miRNA <- rownames(IMConn_rm_df)
+
+hubData_rm <- hubData_rm %>%
+  left_join(IMConn_rm_df[, c("miRNA", "kWithin")], by = "miRNA")
+
+hubList_rm <- hubData_rm %>%
+  group_by(module) %>%
+  arrange(desc(kWithin)) %>%
+  slice_head(n = 10) %>%
+  ungroup()
+
+hubList_rm
+```
+
+```{r}
+# Compare to Li paired-WGCNA export
+library(mclust)
+library(pheatmap)
+
+paired_wgcna_export <- readRDS("paired_wgcna_export.rds")
+
+moduleColors_wgcna <- paired_wgcna_export$moduleColors
+TOM_wgcna          <- paired_wgcna_export$TOM
+
+moduleColors_pairaware <- moduleColors_rm
+TOM_pairaware          <- TOM_rm
+adjacency_pairaware    <- adjacency_rm
+
+miRNA_ids_current <- colnames(datExpr)
+
+names(moduleColors_pairaware) <- miRNA_ids_current
+dimnames(TOM_pairaware) <- list(miRNA_ids_current, miRNA_ids_current)
+dimnames(adjacency_pairaware) <- list(miRNA_ids_current, miRNA_ids_current)
+
+if (is.null(names(moduleColors_wgcna))) {
+  names(moduleColors_wgcna) <- paired_wgcna_export$miRNAs
+}
+if (is.null(dimnames(TOM_wgcna)[[1]])) {
+  dimnames(TOM_wgcna) <- list(paired_wgcna_export$miRNAs, paired_wgcna_export$miRNAs)
+}
+
+common <- intersect(rownames(TOM_wgcna), rownames(TOM_pairaware))
+stopifnot(length(common) > 0)
+
+mw_comp <- moduleColors_wgcna[common]
+mp_comp <- moduleColors_pairaware[common]
+
+tab <- table(WGCNA_Li = mw_comp, PairAware = mp_comp)
+
+w_sizes <- rowSums(tab)
+p_sizes <- colSums(tab)
+
+rownames(tab) <- paste0(rownames(tab), " (n=", w_sizes, ")")
+colnames(tab) <- paste0(colnames(tab), " (n=", p_sizes, ")")
+
+cell_text <- matrix(as.character(tab),
+                    nrow = nrow(tab), ncol = ncol(tab),
+                    dimnames = dimnames(tab))
+
+pheatmap::pheatmap(
+  tab,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  display_numbers = cell_text,
+  number_color = "black",
+  fontsize_number = 8,
+  main = "Module overlap: Li paired-WGCNA vs pair-aware WGCNA"
+)
+
+ari_rm <- mclust::adjustedRandIndex(as.integer(factor(mw_comp)),
+                                    as.integer(factor(mp_comp)))
+cat("ARI =", ari_rm, "\n")
+cat("Reminder: ARI can be low even if biology overlaps.\n\n")
+
+if (!("FDR" %in% colnames(lmm_results_rm_df))) {
+  lmm_results_rm_df$FDR <- p.adjust(lmm_results_rm_df$p_tumour, method = "BH")
+}
+lmm_results_wgcna <- paired_wgcna_export$lmm_results
+if (!("FDR" %in% colnames(lmm_results_wgcna))) {
+  lmm_results_wgcna$FDR <- p.adjust(lmm_results_wgcna$p_tumour, method = "BH")
+}
+
+top_pair_me     <- lmm_results_rm_df$module[order(lmm_results_rm_df$FDR)][1]
+top_pair_module <- sub("^ME", "", top_pair_me)
+
+genes_w_turq <- names(moduleColors_wgcna)[moduleColors_wgcna == "turquoise"]
+genes_pair   <- names(moduleColors_pairaware)[moduleColors_pairaware == top_pair_module]
+
+jaccard_turq_vs_topPair <- length(intersect(genes_w_turq, genes_pair)) / length(union(genes_w_turq, genes_pair))
+cat("Top pair-aware module by FDR:", top_pair_module, "\n")
+cat("Jaccard(WGCNA turquoise, top pair-aware) =", jaccard_turq_vs_topPair, "\n\n")
+
+top_w_me     <- lmm_results_wgcna$module[order(lmm_results_wgcna$FDR)][1]
+top_w_module <- sub("^ME", "", top_w_me)
+
+genes_w_top <- names(moduleColors_wgcna)[moduleColors_wgcna == top_w_module]
+jaccard_top_vs_top <- length(intersect(genes_w_top, genes_pair)) / length(union(genes_w_top, genes_pair))
+cat("Top WGCNA module by FDR:", top_w_module, "\n")
+cat("Jaccard(top WGCNA, top pair-aware) =", jaccard_top_vs_top, "\n\n")
+
+A1_comp <- TOM_wgcna[common, common]
+A2_comp <- TOM_pairaware[common, common]
+
+v1 <- A1_comp[upper.tri(A1_comp)]
+v2 <- A2_comp[upper.tri(A2_comp)]
+
+test_comp_cor_rm <- cor.test(v1, v2, method = "spearman")
+print(test_comp_cor_rm)
+
+plot(v1, v2, pch = 20,
+     xlab = "Li paired-WGCNA TOM edge weight",
+     ylab = "Pair-aware TOM edge weight",
+     main = "Edge-weight agreement (TOM)")
+
+cat("Spearman rho =", unname(test_comp_cor_rm$estimate),
+    " p =", test_comp_cor_rm$p.value, "\n")
+cat("Interpretation: positive rho means edges ranked strong in one tend to be strong in the other.\n\n")
+
+k_wgcna <- rowSums(A1_comp) - diag(A1_comp)
+k_pair  <- rowSums(A2_comp) - diag(A2_comp)
+
+test_comp_hub_rm <- cor.test(k_wgcna, k_pair, method = "spearman")
+print(test_comp_hub_rm)
+
+plot(k_wgcna, k_pair, pch = 20,
+     xlab = "Li paired-WGCNA hubness (TOM strength)",
+     ylab = "Pair-aware hubness (TOM strength)",
+     main = "Hubness agreement")
+
+topK <- c(25, 50, 75, 100)
+for (K in topK) {
+  hubs_w <- names(sort(k_wgcna, decreasing = TRUE))[1:K]
+  hubs_p <- names(sort(k_pair,  decreasing = TRUE))[1:K]
+  n_overlap <- length(intersect(hubs_w, hubs_p))
+  cat("N =", K,
+      " overlap =", n_overlap,
+      " =>", round(100 * n_overlap / K, 1), "%\n")
+}
+cat("\n")
+```
+
+```{r}
+# Module sizes (pair-aware)
+mod_sizes <- sort(table(moduleColors_pairaware), decreasing = TRUE)
+
+modules_df <- data.frame(
+  Module  = names(mod_sizes),
+  Number_of_Genes = as.integer(mod_sizes),
+  Relative_Amount = round(100 * as.integer(mod_sizes) / length(moduleColors_pairaware), 1),
+  row.names = NULL
+)
+
+modules_df
+```
+
+```{r}
+# Top-N hub overlap by kWithinNorm (paired vs pair-aware)
+suppressPackageStartupMessages(library(dplyr))
+
+kWithin_normalised <- function(A, colors, drop_grey = TRUE) {
+  stopifnot(is.matrix(A), nrow(A) == ncol(A))
+  stopifnot(!is.null(rownames(A)))
+  stopifnot(!is.null(names(colors)))
+
+  common_genes <- intersect(rownames(A), names(colors))
+  A <- A[common_genes, common_genes, drop = FALSE]
+  colors <- colors[common_genes]
+
+  if (drop_grey) {
+    keep <- colors != "grey"
+    A <- A[keep, keep, drop = FALSE]
+    colors <- colors[keep]
+  }
+
+  out_list <- lapply(split(names(colors), colors), function(genes) {
+    m <- length(genes)
+    if (m < 2) return(NULL)
+
+    subA <- A[genes, genes, drop = FALSE]
+    kWithin <- rowSums(subA, na.rm = TRUE) - diag(subA)
+    kWithinNorm <- kWithin / (m - 1)
+
+    data.frame(
+      gene = genes,
+      module = unique(colors[genes]),
+      moduleSize = m,
+      kWithin = as.numeric(kWithin),
+      kWithinNorm = as.numeric(kWithinNorm),
+      row.names = NULL
+    )
+  })
+
+  bind_rows(out_list)
+}
+
+paired <- readRDS("paired_wgcna_export.rds")
+
+A_paired <- if (!is.null(paired$adjacency)) paired$adjacency else paired$TOM
+A_pairaw <- if (exists("adjacency_rm")) adjacency_rm else TOM_rm
+
+if (is.null(rownames(A_paired)) && !is.null(names(paired$moduleColors))) {
+  dimnames(A_paired) <- list(names(paired$moduleColors), names(paired$moduleColors))
+}
+if (is.null(rownames(A_pairaw))) {
+  miRNA_ids_current <- colnames(datExpr)
+  dimnames(A_pairaw) <- list(miRNA_ids_current, miRNA_ids_current)
+}
+
+col_p <- paired$moduleColors
+col_a <- moduleColors_rm
+names(col_a) <- colnames(datExpr)
+if (is.null(names(col_p)) && !is.null(paired$miRNAs)) names(col_p) <- paired$miRNAs
+
+common3 <- intersect(rownames(A_paired), rownames(A_pairaw))
+stopifnot(length(common3) > 10)
+
+A_p <- A_paired[common3, common3, drop = FALSE]
+A_a <- A_pairaw[common3, common3, drop = FALSE]
+col_p <- col_p[common3]
+col_a <- col_a[common3]
+
+kw_p <- kWithin_normalised(A_p, col_p, drop_grey = TRUE)
+kw_a <- kWithin_normalised(A_a, col_a, drop_grey = TRUE)
+
+get_top <- function(df, K) {
+  df %>% arrange(desc(kWithinNorm)) %>% slice_head(n = K) %>% pull(gene)
+}
+
+topK2 <- c(25, 50, 100, 500)
+for (K in topK2) {
+  hubs_p <- get_top(kw_p, K)
+  hubs_a <- get_top(kw_a, K)
+  ov <- length(intersect(hubs_p, hubs_a))
+  cat("Top", K, ": overlap =", ov,
+      " (", round(100 * ov / K, 1), "%)\n", sep = "")
+}
+
+overlap_top25  <- intersect(get_top(kw_p, 25),  get_top(kw_a, 25))
+overlap_top50  <- intersect(get_top(kw_p, 50),  get_top(kw_a, 50))
+overlap_top100 <- intersect(get_top(kw_p, 100), get_top(kw_a, 100))
+
+overlap_top25
+```
+
+```{r}
+# Top-N turquoise overlap by kWithin (paired vs pair-aware)
+suppressPackageStartupMessages(library(dplyr))
+
+targetModule <- "turquoise"
+topN <- c(10, 25, 50, 100, 200)
+
+paired <- readRDS("paired_wgcna_export.rds")
+
+stopifnot(exists("hubData_rm"))
+stopifnot(!is.null(paired$hubData))
+
+hub_pairaware <- hubData_rm
+hub_paired    <- paired$hubData
+
+clean_hub <- function(df) {
+  stopifnot(all(c("miRNA","module","kWithin") %in% colnames(df)))
+  df$miRNA   <- trimws(as.character(df$miRNA))
+  df$module  <- trimws(as.character(df$module))
+  df$kWithin <- as.numeric(df$kWithin)
+  df$module  <- sub("^ME", "", df$module)
+  df
+}
+
+hub_pairaware <- clean_hub(hub_pairaware)
+hub_paired    <- clean_hub(hub_paired)
+
+get_top_by_kWithin <- function(df, module_name, N) {
+  sub <- df[df$module == module_name & is.finite(df$kWithin), , drop = FALSE]
+  sub <- sub[order(sub$kWithin, decreasing = TRUE), , drop = FALSE]
+  head(sub$miRNA, N)
+}
+
+cat("Turquoise genes (paired):   ", sum(hub_paired$module == targetModule), "\n")
+cat("Turquoise genes (pairaware):", sum(hub_pairaware$module == targetModule), "\n\n")
+
+top10_paired <- get_top_by_kWithin(hub_paired,    targetModule, 10)
+top10_pairaw <- get_top_by_kWithin(hub_pairaware, targetModule, 10)
+
+cat("Top10 paired:\n");      print(top10_paired)
+cat("\nTop10 pair-aware:\n"); print(top10_pairaw)
+
+ov10 <- intersect(top10_paired, top10_pairaw)
+cat("\nOverlap top10 (n=", length(ov10), "):\n", sep = "")
+print(ov10)
+
+res <- lapply(topN, function(N) {
+  hubs_p <- get_top_by_kWithin(hub_paired,    targetModule, N)
+  hubs_a <- get_top_by_kWithin(hub_pairaware, targetModule, N)
+  ov <- length(intersect(hubs_p, hubs_a))
+  data.frame(N = N, overlap = ov, percent = round(100 * ov / N, 1))
+}) %>% bind_rows()
+
+res
+
+overlap_top25 <- intersect(
+  get_top_by_kWithin(hub_paired,    targetModule, 25),
+  get_top_by_kWithin(hub_pairaware, targetModule, 25)
+)
+overlap_top25
+```
